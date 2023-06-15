@@ -1,24 +1,21 @@
 
+from .basis import KernelBasis, EmptyBasisException
+
+from escnn.group import Group
+from escnn.group import IrreducibleRepresentation
+from escnn.group import Representation
+
+import torch
+
+from typing import Type, Union, Tuple, Dict, List, Iterable, Callable, Set
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Callable, Dict, Iterable, List, Set, Tuple, Type, Union
 
-# import torch
-import jax
-import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, PRNGKeyArray
-
-from escnn.group import Group, IrreducibleRepresentation, Representation
-
-from .basis import EmptyBasisException, KernelBasis
 
 
 class SteerableFiltersBasis(KernelBasis):
-    js: List[Tuple]
-    _js: Dict[int, int]
-    _start_index: Dict[int, int]
-
+    
     def __init__(self,
                  G: Group,
                  action: Representation,
@@ -97,7 +94,7 @@ class SteerableFiltersBasis(KernelBasis):
         return self.action.size
 
     @abstractmethod
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on the discrete set of points in ``points``.
@@ -131,7 +128,7 @@ class SteerableFiltersBasis(KernelBasis):
         #
         # return out
 
-    def sample_as_dict(self, points: Array, out: Array = None) -> Dict[Tuple, Array]:
+    def sample_as_dict(self, points: torch.Tensor, out: torch.Tensor = None) -> Dict[Tuple, torch.Tensor]:
         r"""
 
         Sample the continuous basis elements on the discrete set of points in ``points``.
@@ -159,18 +156,18 @@ class SteerableFiltersBasis(KernelBasis):
 
         if out is not None:
             assert out.shape == (S, self.dim), (out.shape, self.dim, S)
-            out = out.reshape(S, self.dim, 1, 1)
+            out = out.view(S, self.dim, 1, 1)
 
         out = self.sample(points, out)
 
-        out = out.reshape(S, self.dim)
+        out = out.view(S, self.dim)
 
         basis = {}
         p = 0
         for j, m in self.js:
             psi = self.group.irrep(*j)
             dim = psi.size * m
-            basis[j] = out[:, p : p+dim].reshape(S, m, psi.size)
+            basis[j] = out[:, p : p+dim].view(S, m, psi.size)
             p += dim
 
         return basis
@@ -252,22 +249,20 @@ class SteerableFiltersBasis(KernelBasis):
         # Verify the steerability property of the basis
 
         S = 20
-        # points = torch.randn(S, self.dimensionality)
-        key = jax.random.PRNGKey(0)
-        points = jax.random.normal(key, (S, self.dimensionality))
+        points = torch.randn(S, self.dimensionality)
 
         basis = self.sample_as_dict(points)
 
         for _ in range(10):
             g = self.group.sample()
 
-            points_g = points @ jnp.array(self.action(g), dtype=points.dtype).T # device=points.device
+            points_g = points @ torch.tensor(self.action(g), device=points.device, dtype=points.dtype).T
             basis_g = self.sample_as_dict(points_g)
 
             g_basis = {}
             for j, basis_j in basis.items():
-                rho_g = jnp.array(self.group.irrep(*j)(g), dtype=points.dtype) # , device=points.device
-                g_basis[j] = jnp.einsum(
+                rho_g = torch.tensor(self.group.irrep(*j)(g), device=points.device, dtype=points.dtype)
+                g_basis[j] = torch.einsum(
                     'ij,pmj->pmi',
                     rho_g,
                     basis_j,
@@ -277,7 +272,7 @@ class SteerableFiltersBasis(KernelBasis):
                 dim = self.group.irrep(*j).size
                 assert basis_g[j].shape == (S, m, dim), (basis_g[j].shape, m, dim, S)
                 assert g_basis[j].shape == (S, m, dim), (g_basis[j].shape, m, dim, S)
-                assert jnp.allclose(g_basis[j], basis_g[j], atol=2e-6, rtol=5e-4), (g_basis[j]-basis_g[j]).max().item()
+                assert torch.allclose(g_basis[j], basis_g[j], atol=2e-6, rtol=5e-4), (g_basis[j]-basis_g[j]).max().item()
 
 
 class PointBasis(SteerableFiltersBasis):
@@ -300,7 +295,7 @@ class PointBasis(SteerableFiltersBasis):
         """
         super(PointBasis, self).__init__(G, G.trivial_representation, [(G.trivial_representation.id, 1)])
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
 
         assert len(points.shape) == 2
         assert points.shape[1] == self.dimensionality, (points.shape, self.dimensionality)
@@ -308,7 +303,7 @@ class PointBasis(SteerableFiltersBasis):
         S = points.shape[0]
 
         if out is None:
-            return jnp.ones((S, self.dim, 1, 1), dtype=points.dtype) #  device=points.device,
+            return torch.ones(S, self.dim, 1, 1, device=points.device, dtype=points.dtype)
         else:
             assert out.shape == (S, self.dim, 1, 1)
             out[:] = 1.

@@ -1,14 +1,10 @@
 
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple, Union
-
-import equinox as eqx
-import jax.numpy as jnp
 import numpy as np
-# import torch
-from jaxtyping import Array, Bool, Float
+from abc import ABC, abstractmethod
+from typing import List, Union, Tuple
 
-from escnn.group import Group, IrreducibleRepresentation, Representation
+import torch
+
 
 
 class EmptyBasisException(Exception):
@@ -21,15 +17,7 @@ class EmptyBasisException(Exception):
         super(EmptyBasisException, self).__init__(message)
         
 
-# class KernelBasis(torch.nn.Module, ABC):
-class KernelBasis(eqx.Module, ABC):
-    dim: int
-    shape: Tuple[int, int]
-    
-    in_repr: Optional[Representation] = None
-    out_repr: Optional[Representation] = None
-    group: Optional[Group] = None
-    action: Optional[Representation] = None
+class KernelBasis(torch.nn.Module, ABC):
     
     def __init__(self, dim: int, shape: Tuple[int, int]):
         r"""
@@ -68,7 +56,7 @@ class KernelBasis(eqx.Module, ABC):
         super(KernelBasis, self).__init__()
 
     @abstractmethod
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
         Sample the continuous basis elements on discrete points in ``points``.
         Optionally, store the resulting multidimentional array in ``out``.
@@ -86,7 +74,7 @@ class KernelBasis(eqx.Module, ABC):
         """
         pass
 
-    def forward(self, points: Array, out: Array = None) -> Array:
+    def forward(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
             Alias for :meth:`~escnn.kernels.KernelBasis.sample`.
         """
@@ -113,8 +101,6 @@ class KernelBasis(eqx.Module, ABC):
 
 
 class AdjointBasis(KernelBasis):
-    adj: Array
-
     
     def __init__(self, basis: KernelBasis, adjoint: np.ndarray):
         r"""
@@ -138,10 +124,9 @@ class AdjointBasis(KernelBasis):
         
         self.basis = basis
 
-        # self.register_buffer('adj', jnp.array(adjoint, dtype=float))
-        self.adj = jnp.array(adjoint, dtype=float)
+        self.register_buffer('adj', torch.tensor(adjoint, dtype=torch.float32))
     
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on the discrete set of points.
@@ -161,8 +146,7 @@ class AdjointBasis(KernelBasis):
         assert len(points.shape) == 2
         assert points.shape[1] == self.adj.shape[0]
         
-        # transformed_points = points @ self.adj.to(device=points.device, dtype=points.dtype).T
-        transformed_points = points @ self.adj.astype(points.dtype).T
+        transformed_points = points @ self.adj.to(device=points.device, dtype=points.dtype).T
         return self.basis.sample(transformed_points, out)
     
     def __getitem__(self, r):
@@ -170,7 +154,7 @@ class AdjointBasis(KernelBasis):
     
     def __eq__(self, other):
         if isinstance(other, AdjointBasis):
-            return self.basis == other.basis and jnp.allclose(self.adj, other.adj)
+            return self.basis == other.basis and torch.allclose(self.adj, other.adj)
         # elif self.basis == other:
         #     return np.allclose(self.adj, np.eye(self.adj.shape[0))
         else:
@@ -203,16 +187,15 @@ class UnionBasis(KernelBasis):
             raise EmptyBasisException
 
         super(UnionBasis, self).__init__(dim, shape)
-        # self._bases = torch.nn.ModuleList(bases_list)
+        self._bases = torch.nn.ModuleList(bases_list)
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
 
         assert len(points.shape) == 2
         S = points.shape[0]
 
         if out is None:
-            # out = torch.empty(S, self.dim, self.shape[0], self.shape[1], device=points.device, dtype=points.dtype)
-            out = jnp.empty(S, self.dim, self.shape[0], self.shape[1], dtype=points.dtype)
+            out = torch.empty(S, self.dim, self.shape[0], self.shape[1], device=points.device, dtype=points.dtype)
 
         p = 0
         for i in range(len(self._bases)):

@@ -1,12 +1,11 @@
-from lie_learn.representations.SO3.wigner_d import wigner_D_matrix
-
-from scipy.spatial.transform import Rotation
+import warnings
 
 import numpy as np
+from lie_learn.representations.SO3.wigner_d import wigner_D_matrix
+from scipy.spatial.transform import Rotation
 
-from ._numerical_thomson import thomson_sphere, thomson_so3, thomson_cube_sphere, thomson_cube_so3
+# from ._numerical_thomson import thomson_sphere, thomson_so3, thomson_cube_sphere, thomson_cube_so3
 
-import warnings
 
 
 __all__ = [
@@ -605,9 +604,9 @@ if __name__ == '__main__':
     theta_2 = theta_2.reshape(-1, 1)
     grid *= theta_2
     
-    from mpl_toolkits.mplot3d import Axes3D
     import matplotlib.pyplot as plt
     import numpy as np
+    from mpl_toolkits.mplot3d import Axes3D
     
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')

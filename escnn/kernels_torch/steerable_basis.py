@@ -1,24 +1,19 @@
 
+from .basis import KernelBasis, EmptyBasisException
+from .steerable_filters_basis import SteerableFiltersBasis
+
+from escnn.group import Group
+from escnn.group import IrreducibleRepresentation
+from escnn.group import Representation
+
+import torch
+
+from typing import Type, Union, Tuple, Dict, List, Iterable, Callable, Set
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Callable, Dict, Iterable, List, Set, Tuple, Type, Union
-
-# import torch
-import jax.numpy as jnp
-from jaxtyping import Array, PRNGKeyArray
-
-from escnn.group import Group, IrreducibleRepresentation, Representation
-
-from .basis import EmptyBasisException, KernelBasis
-from .steerable_filters_basis import SteerableFiltersBasis
 
 
 class IrrepBasis(KernelBasis):
-    in_irrep: Union[IrreducibleRepresentation, Tuple]
-    out_irrep: Union[IrreducibleRepresentation, Tuple]
-    basis: SteerableFiltersBasis
-    js: List[Tuple]
-    _start_index: Dict[int, int]
     
     def __init__(self,
                  basis: SteerableFiltersBasis,
@@ -78,7 +73,7 @@ class IrrepBasis(KernelBasis):
             self._start_index[_j] = idx
             idx += self.dim_harmonic(_j)
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on the discrete set of points in ``points``.
@@ -100,7 +95,7 @@ class IrrepBasis(KernelBasis):
         S = points.shape[0]
     
         if out is None:
-            out = jnp.empty((S, self.dim, self.shape[0], self.shape[1]), dtype=points.dtype) # device=points.device,
+            out = torch.empty(S, self.dim, self.shape[0], self.shape[1], device=points.device, dtype=points.dtype)
     
         assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
 
@@ -112,11 +107,11 @@ class IrrepBasis(KernelBasis):
             outs[j] = out[:, B:B + self.dim_harmonic(j), ...]
             B += self.dim_harmonic(j)
 
-        out = self.sample_harmonics(steerable_basis, outs)
+        self.sample_harmonics(steerable_basis, outs)
         return out
 
     @abstractmethod
-    def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    def sample_harmonics(self, points: Dict[Tuple, torch.Tensor], out: Dict[Tuple, torch.Tensor] = None) -> Dict[Tuple, torch.Tensor]:
         r"""
 
         Sample the continuous basis elements on the discrete set of points.
@@ -171,21 +166,7 @@ class IrrepBasis(KernelBasis):
 
 
 class SteerableKernelBasis(KernelBasis):
-    A_inv: Array
-    B: Array
-
-    _irrep_basis: Type[IrrepBasis]
-    _irrep__basis_kwargs: Dict
-    irreps_bases: Dict[Tuple, IrrepBasis]
-    _dim_harmonics: Dict[int, int]
-    bases: List
-    basis: SteerableFiltersBasis
-    js: List[Tuple]
-    in_sizes: List[int]
-    out_sizes: List[int]
-    _slices: Dict
-
-
+    
     def __init__(self,
                  basis: SteerableFiltersBasis,
                  in_repr: Representation,
@@ -294,24 +275,20 @@ class SteerableKernelBasis(KernelBasis):
         self.basis = basis
 
         for io_pair, intertwiner_basis in self.irreps_bases.items():
-            # self.add_module(f'basis_{io_pair}', intertwiner_basis)
-            pass
-            # TODO: save basis!
+            self.add_module(f'basis_{io_pair}', intertwiner_basis)
 
         ################
 
-        A_inv = jnp.array(in_repr.change_of_basis_inv, dtype=float).copy()
-        B = jnp.array(out_repr.change_of_basis, dtype=float).copy()
+        A_inv = torch.tensor(in_repr.change_of_basis_inv, dtype=torch.float32).clone()
+        B = torch.tensor(out_repr.change_of_basis, dtype=torch.float32).clone()
 
-        if not jnp.allclose(A_inv, jnp.eye(in_repr.size)):
-            # self.register_buffer('A_inv', A_inv)
-            self.A_inv = A_inv
+        if not torch.allclose(A_inv, torch.eye(in_repr.size)):
+            self.register_buffer('A_inv', A_inv)
         else:
             self.A_inv = None
 
-        if not jnp.allclose(B, jnp.eye(out_repr.size)):
-            # self.register_buffer('B', B)
-            self.B = B
+        if not torch.allclose(B, torch.eye(out_repr.size)):
+            self.register_buffer('B', B)
         else:
             self.B = None
 
@@ -359,7 +336,7 @@ class SteerableKernelBasis(KernelBasis):
         '''
         return self._dim_harmonics[j]
 
-    def compute_harmonics(self, points: Array) -> Dict[Tuple, Array]:
+    def compute_harmonics(self, points: torch.Tensor) -> Dict[Tuple, torch.Tensor]:
         r"""
         Pre-compute the sampled steerable filter basis over a set of point.
         This is an alias for ``self.basis.sample_as_dict(points)``.
@@ -370,7 +347,7 @@ class SteerableKernelBasis(KernelBasis):
         """
         return self.basis.sample_as_dict(points)
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on the discrete set of points in ``points``.
@@ -390,7 +367,7 @@ class SteerableKernelBasis(KernelBasis):
         S = points.shape[0]
 
         if out is None:
-            out = jnp.zeros((S, self.dim, self.shape[0], self.shape[1]), dtype=points.dtype) # , device=points.device
+            out = torch.zeros((S, self.dim, self.shape[0], self.shape[1]), device=points.device, dtype=points.dtype)
         else:
             out[:] = 0.
             
@@ -407,7 +384,7 @@ class SteerableKernelBasis(KernelBasis):
 
         return out
 
-    def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    def sample_harmonics(self, points: Dict[Tuple, torch.Tensor], out: Dict[Tuple, torch.Tensor] = None) -> Dict[Tuple, torch.Tensor]:
         r"""
         Sample the continuous basis elements on the discrete set of points.
         Rather than using the points' coordinates, the method directly takes in input the steerable basis elements
@@ -432,12 +409,12 @@ class SteerableKernelBasis(KernelBasis):
         """
         if out is None:
             out = {
-                j: jnp.zeros(
+                j: torch.zeros(
                     (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]),
-                    dtype=points[j].dtype
+                    device=points[j].device, dtype=points[j].dtype
                 )
                 for j in self.js
-            } # device=points[j].device, 
+            }
 
         for j in self.js:
             if j in out:
@@ -451,16 +428,16 @@ class SteerableKernelBasis(KernelBasis):
     
         return out
 
-    def _sample_direct_sum(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    def _sample_direct_sum(self, points: Dict[Tuple, torch.Tensor], out: Dict[Tuple, torch.Tensor] = None) -> Dict[Tuple, torch.Tensor]:
     
         if out is None:
             out = {
-                j: jnp.zeros(
+                j: torch.zeros(
                     (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]),
-                    dtype=points[j].dtype
+                    device=points[j].device, dtype=points[j].dtype
                 )
                 for j in self.js
-            } # device=points[j].device, 
+            }
         # else:
         #     for j in self.js:
         #         if j in out:
@@ -483,7 +460,7 @@ class SteerableKernelBasis(KernelBasis):
 
         return out
     
-    def _change_of_basis(self, samples: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    def _change_of_basis(self, samples: Dict[Tuple, torch.Tensor], out: Dict[Tuple, torch.Tensor] = None) -> Dict[Tuple, torch.Tensor]:
         # multiply by the change of basis matrices to transform the irreps basis in the full representations basis
 
         if out is None:
@@ -491,11 +468,11 @@ class SteerableKernelBasis(KernelBasis):
             
         for j in samples.keys():
             if self.A_inv is not None and self.B is not None:
-                out[j][:] = jnp.einsum("no,pboi,ij->pbnj", self.B.astype(samples[j].dtype), samples[j], self.A_inv.astype(samples[j].dtype))
+                out[j][:] = torch.einsum("no,pboi,ij->pbnj", self.B.to(samples[j].dtype), samples[j], self.A_inv.to(samples[j].dtype))
             elif self.A_inv is not None:
-                out[j][:] = jnp.einsum("pboi,ij->pboj", samples[j], self.A_inv.astype(samples[j].dtype))
+                out[j][:] = torch.einsum("pboi,ij->pboj", samples[j], self.A_inv.to(samples[j].dtype))
             elif self.B is not None:
-                out[j][:] = jnp.einsum("no,pboi->pbni", self.B.astype(samples[j].dtype), samples[j])
+                out[j][:] = torch.einsum("no,pboi->pbni", self.B.to(samples[j].dtype), samples[j])
             else:
                 out[j][...] = samples[j]
         

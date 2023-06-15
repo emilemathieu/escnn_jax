@@ -226,7 +226,7 @@ torch>=1.3
 numpy
 scipy
 lie_learn
-joblib
+joblibx
 py3nj
 ```
 Optional:

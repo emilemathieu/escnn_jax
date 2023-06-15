@@ -3,9 +3,8 @@ from collections import defaultdict
 from itertools import groupby
 from typing import Dict, List, Tuple, Union
 
-import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, Bool, Float
+import torch
 from scipy import sparse
 
 import escnn.nn
@@ -189,7 +188,7 @@ class FieldType:
             change_of_basis_inv.append(repr.change_of_basis_inv)
         return sparse.block_diag(change_of_basis_inv)
 
-    def get_dense_change_of_basis(self) -> Float:
+    def get_dense_change_of_basis(self) -> torch.FloatTensor:
         """
         The method returns a dense :class:`torch.Tensor` containing a copy of the change-of-basis matrix.
         
@@ -197,9 +196,9 @@ class FieldType:
             See :attr:`escnn.nn.FieldType.change_of_basis` for more details.
 
         """
-        return jnp.array(self.change_of_basis.todense())
+        return torch.FloatTensor(self.change_of_basis.todense())
 
-    def get_dense_change_of_basis_inv(self) -> Float:
+    def get_dense_change_of_basis_inv(self) -> torch.FloatTensor:
         """
         The method returns a dense :class:`torch.Tensor` containing a copy of the inverse of the
         change-of-basis matrix.
@@ -208,9 +207,9 @@ class FieldType:
             See :attr:`escnn.nn.FieldType.change_of_basis` for more details.
 
         """
-        return jnp.array(self.change_of_basis_inv.todense())
+        return torch.FloatTensor(self.change_of_basis_inv.todense())
     
-    def fiber_representation(self, element: GroupElement) -> Array:
+    def fiber_representation(self, element: GroupElement) -> torch.Tensor:
     
         assert element.group == self.fibergroup
     
@@ -219,10 +218,10 @@ class FieldType:
             representation.append(repr(element))
         representation = sparse.block_diag(representation).todense()
     
-        representation = jnp.array(representation)
+        representation = torch.tensor(representation)
         return representation
 
-    def transform_fibers(self, input: Array, element: GroupElement) -> Array:
+    def transform_fibers(self, input: torch.Tensor, element: GroupElement) -> torch.Tensor:
         r"""
 
         Transform the feature vectors of the input tensor according to the group representation associated to
@@ -253,11 +252,11 @@ class FieldType:
             the transformed tensor
 
         """
-        representation = self.fiber_representation(element).astype(dtype=input.dtype)#.to(dtype=input.dtype, device=input.device)
+        representation = self.fiber_representation(element).to(dtype=input.dtype, device=input.device)
         # .contiguous() seems necessary here; if the array is not contiguous some operations have unexpected behaviors
-        return jnp.einsum("oi,bi...->bo...", representation, input)#.contiguous()
+        return torch.einsum("oi,bi...->bo...", representation, input).contiguous()
 
-    def transform(self, input: Array, element: GroupElement, coords: Array = None, order: int = 2) -> Union[Array, Tuple[Array, Array]]:
+    def transform(self, input: torch.Tensor, element: GroupElement, coords: torch.Tensor = None, order: int = 2) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         r"""
 
         The method takes a PyTorch's tensor, compatible with this type (i.e. whose spatial dimensions are
@@ -340,8 +339,7 @@ class FieldType:
             output_np = output.detach().to('cpu').numpy()
             transformed = self.gspace._interpolate_transform_basespace(output_np, element, order=order)
             transformed = np.ascontiguousarray(transformed).astype(output_np.dtype)
-            # return torch.from_numpy(transformed).to(device=input.device)
-            return jnp.array(transformed)#.to(device=input.device)
+            return torch.from_numpy(transformed).to(device=input.device)
         
         else:
             assert len(coords.shape) == 2, coords.shape
@@ -351,12 +349,12 @@ class FieldType:
             assert input.shape[0] == coords.shape[0], \
                 f"Error! Points in the `input` and `coords` tensors do not match: {input.shape[0]} != {coords.shape[0]}."
             
-            representation = jnp.array(
-                self.gspace.basespace_action(element), dtype=coords.dtype
-            )#.to(dtype=coords.dtype, device=coords.device)
+            representation = torch.tensor(
+                self.gspace.basespace_action(element)
+            ).to(dtype=coords.dtype, device=coords.device)
             
             # .contiguous() seems necessary here; if the array is not contiguous some operations have unexpected behaviors
-            transformed_coords = jnp.einsum("oi,pi->po", representation, coords)#.contiguous()
+            transformed_coords = torch.einsum("oi,pi->po", representation, coords).contiguous()
             
             return output, transformed_coords
 
@@ -601,5 +599,5 @@ class FieldType:
         """
         return self.gspace.testing_elements
 
-    def __call__(self, tensor: Array, coords: Array = None) -> 'escnn.nn.GeometricTensor':
+    def __call__(self, tensor: torch.Tensor, coords: torch.Tensor = None) -> 'escnn.nn.GeometricTensor':
         return escnn.nn.GeometricTensor(tensor, self, coords)

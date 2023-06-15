@@ -1,31 +1,25 @@
 
-from typing import Optional, Tuple
-
-import equinox as eqx
-import jax
-import jax.numpy as jnp
-import numpy as np
-# import torch
-from jaxtyping import Array, PRNGKeyArray
-
-from escnn.gspaces import GSpace, GSpace0D
-from escnn.nn import FieldType, GeometricTensor, init
-from escnn.nn.modules.basismanager import BasisManager, BlocksBasisExpansion
-
+from escnn.gspaces import GSpace0D
+from escnn.nn import init
+from escnn.nn import FieldType
+from escnn.nn import GeometricTensor
 from .equivariant_module import EquivariantModule
+
+from escnn.nn.modules.basismanager import BasisManager
+from escnn.nn.modules.basismanager import BlocksBasisExpansion
+
+from torch.nn import Parameter
+from torch.nn.functional import linear
+import torch
+import numpy as np
+
+from typing import Tuple
+
 
 __all__ = ["Linear"]
 
 
 class Linear(EquivariantModule):
-    bias: Array
-    weights: Array
-    space: GSpace
-    inference: bool = False
-    bias_expansion: Array
-    expanded_bias: Array
-    matrix: Array
-    _basisexpansion: Optional[BlocksBasisExpansion]
 
     def __init__(self,
                  in_type: FieldType,
@@ -34,9 +28,6 @@ class Linear(EquivariantModule):
                  basisexpansion: str = 'blocks',
                  recompute: bool = False,
                  initialize: bool = True,
-                 inference: bool = False,
-                 *,
-                 key: PRNGKeyArray
                  ):
         r"""
         
@@ -124,7 +115,6 @@ class Linear(EquivariantModule):
         self.in_type = in_type
         self.out_type = out_type
         self.space = in_type.gspace
-        self.inference = inference
 
         if bias:
             # bias can be applied only to trivial irreps inside the representation
@@ -146,7 +136,7 @@ class Linear(EquivariantModule):
                 # matrix containing the columns of the change of basis which map from the trivial irreps to the
                 # field representations. This matrix allows us to map the bias defined only over the trivial irreps
                 # to a bias for the whole field more efficiently
-                bias_expansion = jnp.zeros((self.out_type.size, trivials))
+                bias_expansion = torch.zeros(self.out_type.size, trivials)
         
                 p, c = 0, 0
                 for r in self.out_type:
@@ -154,18 +144,14 @@ class Linear(EquivariantModule):
                     for irr in r.irreps:
                         irr = self.out_type.fibergroup.irrep(*irr)
                         if irr.is_trivial():
-                            # bias_expansion[p:p + r.size, c] = jnp.array(r.change_of_basis[:, pi])
-                            bias_expansion.at[p:p + r.size, c].set(r.change_of_basis[:, pi])
+                            bias_expansion[p:p + r.size, c] = torch.tensor(r.change_of_basis[:, pi])
                             c += 1
                         pi += irr.size
                     p += r.size
         
-                # self.register_buffer("bias_expansion", bias_expansion)
-                self.bias_expansion = bias_expansion
-                # self.bias = Parameter(torch.zeros(trivials), requires_grad=True)
-                self.bias = jnp.zeros(trivials)
-                # self.register_buffer("expanded_bias", torch.zeros(out_type.size))
-                self.expanded_bias = jnp.zeros((out_type.size))
+                self.register_buffer("bias_expansion", bias_expansion)
+                self.bias = Parameter(torch.zeros(trivials), requires_grad=True)
+                self.register_buffer("expanded_bias", torch.zeros(out_type.size))
             else:
                 self.bias = None
                 self.expanded_bias = None
@@ -185,23 +171,15 @@ class Linear(EquivariantModule):
         else:
             raise ValueError('Basis Expansion algorithm "%s" not recognized' % basisexpansion)
 
-        # self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
-        print("self.basisexpansion", self.basisexpansion)
-        print("self.basisexpansion.dimension()", self.basisexpansion.dimension())
-        self.weights = jnp.zeros((self.basisexpansion.dimension()))
+        self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
 
         filter_size = (out_type.size, in_type.size)
-        print("filter_size", filter_size)
-        # self.register_buffer("matrix", torch.zeros(*filter_size))
-        self.matrix = jnp.zeros(filter_size)
+        self.register_buffer("matrix", torch.zeros(*filter_size))
         if initialize:
             # by default, the weights are initialized with a generalized form of He's weight initialization
-            # init.generalized_he_init(self.weights.data, self.basisexpansion)
-           self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
-           print("self.weights", self.weights)
-           raise
+            init.generalized_he_init(self.weights.data, self.basisexpansion)
     
-    def __call__(self, input: GeometricTensor,):
+    def forward(self, input: GeometricTensor):
         r"""
         Convolve the input with the expanded matrix and bias.
         
@@ -217,16 +195,14 @@ class Linear(EquivariantModule):
         # only GSpace0D allowed in practice
         assert len(input.shape) == 2
         
-        # if not self.training:
-        if self.inference:
+        if not self.training:
             _matrix = self.matrix
             _bias = self.expanded_bias
         else:
             # retrieve the matrix and the bias
             _matrix, _bias = self.expand_parameters()
         
-        # output = linear(input.tensor, _matrix, bias=_bias)
-        output = jax.vmap(lambda x: _matrix @ x + _bias)(input.tensor)
+        output = linear(input.tensor, _matrix, bias=_bias)
         
         return GeometricTensor(output, self.out_type, input.coords)
 
@@ -243,7 +219,7 @@ class Linear(EquivariantModule):
         """
         return self._basisexpansion
 
-    def expand_parameters(self) -> Tuple[Array, Array]:
+    def expand_parameters(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
 
         Expand the matrix in terms of the :attr:`escnn.nn.Linear.weights` and the
@@ -289,11 +265,9 @@ class Linear(EquivariantModule):
         if not mode:
             _matrix, _bias = self.expand_parameters()
         
-            # self.register_buffer("matrix", _matrix)
-            self.matrix = _matrix
+            self.register_buffer("matrix", _matrix)
             if _bias is not None:
-                # self.register_buffer("expanded_bias", _bias)
-                self.expanded_bias = _bias
+                self.register_buffer("expanded_bias", _bias)
             else:
                 self.expanded_bias = None
     
@@ -312,7 +286,7 @@ class Linear(EquivariantModule):
         
         return (input_shape[0], self.out_type.size)
 
-    def export(self) -> eqx.nn.Linear:
+    def export(self) -> torch.nn.Linear:
         r"""
            Export this module to a normal PyTorch :class:`torch.nn.Linear` module and set to "eval" mode.
 
@@ -320,40 +294,33 @@ class Linear(EquivariantModule):
         # set to eval mode so the matrix and the bias are updated with the current
         # values of the weights
         
-        # self.eval()
+        self.eval()
         _matrix = self.matrix
         _bias = self.expanded_bias
         
         has_bias = self.bias is not None
 
         # build the PyTorch module
-        # linear = torch.nn.Linear(self.in_type.size, self.out_type.size, bias=has_bias)
-        # linear.weight.data[:] = self
-        # # set the weights and the bias
-        # linear.weight.data = _matrix.data
-        # if has_bias:
-        #     linear.bias.data = _bias.data
-
-        linear = eqx.nn.Linear(self.in_type.size, self.out_type.size, use_bias=has_bias, key=None)
+        linear = torch.nn.Linear(self.in_type.size, self.out_type.size, bias=has_bias)
+        linear.weight.data[:] = self
 
         # set the weights and the bias
-        linear.weight = _matrix
+        linear.weight.data = _matrix.data
         if has_bias:
-            linear.bias = _bias
+            linear.bias.data = _bias.data
 
         return linear
 
-    def check_equivariance(self, key, atol: float = 1e-6, rtol: float = 1e-6, assertion: bool = True, verbose: bool = True):
+    def check_equivariance(self, atol: float = 1e-6, rtol: float = 1e-6, assertion: bool = True, verbose: bool = True):
     
-        # x = torch.randn(10, self.in_type.size)
-        x = jax.random.normal(key, (10, self.in_type.size))
+        x = torch.randn(10, self.in_type.size)
         x = GeometricTensor(x, self.in_type)
     
         errors = []
 
         for el in self.space.testing_elements:
-            out1 = np.array(self(x).transform_fibers(el).tensor)
-            out2 = np.array(self(x.transform_fibers(el)).tensor)
+            out1 = self(x).transform_fibers(el).tensor.detach().numpy()
+            out2 = self(x.transform_fibers(el)).tensor.detach().numpy()
         
             errs = np.abs(out1 - out2)
         

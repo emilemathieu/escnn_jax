@@ -1,21 +1,20 @@
 
-from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Tuple
+from escnn.nn import GeometricTensor
+from escnn.nn import FieldType
 
-import equinox as eqx
-import jax
-import jax.numpy as jnp
+from torch.nn import Module
+
+import torch
 import numpy as np
-from jaxtyping import PRNGKeyArray
 
-from escnn.nn import FieldType, GeometricTensor
+from abc import ABC, abstractmethod
+
+from typing import List, Tuple, Any
 
 __all__ = ["EquivariantModule"]
 
 
-class EquivariantModule(eqx.Module, ABC):
-    in_type: Optional[FieldType]
-    out_type: Optional[FieldType]
+class EquivariantModule(Module, ABC):
 
     def __init__(self):
         r"""
@@ -59,7 +58,7 @@ class EquivariantModule(eqx.Module, ABC):
         self.out_type = None
 
     @abstractmethod
-    def __call__(self, *input):
+    def forward(self, *input):
         pass
     
     @abstractmethod
@@ -77,7 +76,7 @@ class EquivariantModule(eqx.Module, ABC):
         """
         pass
     
-    def check_equivariance(self, key, atol: float = 1e-7, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-7, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
         r"""
         
         Method that automatically tests the equivariance of the current module.
@@ -94,8 +93,7 @@ class EquivariantModule(eqx.Module, ABC):
     
         c = self.in_type.size
     
-        # x = torch.randn(3, c, *[10]*self.in_type.gspace.dimensionality)
-        x = jax.random.normal(key, (3, c, *[10]*self.in_type.gspace.dimensionality))
+        x = torch.randn(3, c, *[10]*self.in_type.gspace.dimensionality)
     
         x = GeometricTensor(x, self.in_type)
         
@@ -106,8 +104,8 @@ class EquivariantModule(eqx.Module, ABC):
             el = self.in_type.gspace.fibergroup.sample()
             print(el)
             
-            out1 = np.array(self(x).transform_fibers(el).tensor)
-            out2 = np.array(self(x.transform_fibers(el)).tensor)
+            out1 = self(x).transform(el).tensor.detach().numpy()
+            out2 = self(x.transform(el)).tensor.detach().numpy()
         
             errs = out1 - out2
             errs = np.abs(errs).reshape(-1)
