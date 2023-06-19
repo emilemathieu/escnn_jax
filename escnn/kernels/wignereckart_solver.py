@@ -5,7 +5,7 @@ from typing import Dict, Iterable, List, Tuple, Union
 # import torch
 import jax
 import jax.numpy as jnp
-import numpy
+import numpy as np
 from jaxtyping import Array, PRNGKeyArray
 
 from escnn.group import *
@@ -111,11 +111,6 @@ class WignerEckartBasis(IrrepBasis):
                 for j in self.js
             } # device=points[j].device
     
-        for j in self.js:
-            if j in out:
-                assert out[j].shape == (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]), (
-                    out[j].shape, points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]
-                )
 
         for b, j in enumerate(self.js):
             if j not in out:
@@ -126,7 +121,7 @@ class WignerEckartBasis(IrrepBasis):
         
             Ys = points[j]
 
-            # out[j].reshape((
+            # out[j].view((
             #     Ys.shape[0],
             #     self.group.irrep(*j).sum_of_squares_constituents, jJl,
             #     Ys.shape[1],
@@ -136,12 +131,23 @@ class WignerEckartBasis(IrrepBasis):
             #     'kspnm,qim->qksipn',
             #     coeff, Ys,
             # )
+            
+            shape = (Ys.shape[0],
+                self.group.irrep(*j).sum_of_squares_constituents, jJl,
+                Ys.shape[1],
+                self.out_irrep.size, self.in_irrep.size,
+            )
             out[j] = jnp.einsum(
                 # 'Nnksm,miS->NnksiS',
                 'kspnm,qim->qksipn',
                 coeff, Ys,
-            )
-            
+            ).reshape((points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]))
+
+        for j in self.js:
+            if j in out:
+                assert out[j].shape == (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]), (
+                    out[j].shape, points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]
+                )
         
         return out
 
@@ -262,6 +268,10 @@ class WignerEckartBasis(IrrepBasis):
 class RestrictedWignerEckartBasis(IrrepBasis):
     m: int
     n: int
+    sg_id: Tuple
+    _js_restriction: Dict[int, List]
+    _dim_harmonics:Dict[int, int]
+    coeffs: Dict[int, Array]
     
     def __init__(self,
                  basis: SteerableFiltersBasis,
@@ -380,12 +390,15 @@ class RestrictedWignerEckartBasis(IrrepBasis):
         # group `G' > G`
         self.basis = basis
 
+        self.coeffs = {}
         for b, _j in enumerate(self.js):
             # self.register_buffer(f'coeff_{b}', _coeffs[_j])
-            setattr(self, f'coeff_{b}', _coeffs[_j])
+            # setattr(self, f'coeff_{b}', _coeffs[_j])
+            self.coeffs[b] = coeff
 
     def coeff(self, idx: int) -> Array:
-        return getattr(self, f'coeff_{idx}')
+        # return getattr(self, f'coeff_{idx}')
+        return self.coeffs[idx]
 
     def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[
         Tuple, Array]:
@@ -398,9 +411,6 @@ class RestrictedWignerEckartBasis(IrrepBasis):
                 for j in self.js
             } # device=points[j].device, 
     
-        for j in self.js:
-            if j in out:
-                assert out[j].shape == (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1])
     
         for b, j in enumerate(self.js):
             if j not in out:
@@ -419,8 +429,12 @@ class RestrictedWignerEckartBasis(IrrepBasis):
                 # 'Nnksm,miS->NnksiS',
                 'kspnm,qim->qksipn',
                 coeff, Ys,
-            )
-    
+            ).reshape((points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]))
+
+        for j in self.js:
+            if j in out:
+                assert out[j].shape == (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1])
+
         return out
 
     def dim_harmonic(self, j: Tuple) -> int:

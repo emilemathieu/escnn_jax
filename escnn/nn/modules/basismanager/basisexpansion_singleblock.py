@@ -80,7 +80,7 @@ class SingleBlockBasisExpansion(BasisManager):
         # self.register_buffer('sampled_basis', sampled_basis)
         self.sampled_basis = sampled_basis
             
-    def forward(self, weights: Array) -> Array:
+    def __call__(self, weights: Array) -> Array:
     
         assert len(weights.shape) == 2 and weights.shape[1] == self.dimension()
     

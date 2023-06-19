@@ -8,14 +8,18 @@ import jax.numpy as jnp
 import numpy as np
 from jaxtyping import PRNGKeyArray
 
+from escnn.gspaces import GSpace, GSpace0D
 from escnn.nn import FieldType, GeometricTensor
 
 __all__ = ["EquivariantModule"]
 
 
 class EquivariantModule(eqx.Module, ABC):
-    in_type: Optional[FieldType]
-    out_type: Optional[FieldType]
+    in_type: FieldType
+    out_type: FieldType
+    space: GSpace
+    inference: bool
+
 
     def __init__(self):
         r"""
@@ -57,6 +61,15 @@ class EquivariantModule(eqx.Module, ABC):
         
         # FieldType: type of the :class:`~escnn.nn.GeometricTensor` returned as output
         self.out_type = None
+
+    def eval(self):
+        return self.train(False)
+    
+    def train(self, mode=True):
+        if not mode:
+            return eqx.tree_inference(self, True)
+        else:
+            return eqx.tree_inference(self, False)
 
     @abstractmethod
     def __call__(self, *input):

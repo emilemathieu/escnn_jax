@@ -337,7 +337,7 @@ class FieldType:
         output = self.transform_fibers(input, element)
 
         if coords is None:
-            output_np = output.detach().to('cpu').numpy()
+            output_np = np.array(output)#.detach().to('cpu').numpy()
             transformed = self.gspace._interpolate_transform_basespace(output_np, element, order=order)
             transformed = np.ascontiguousarray(transformed).astype(output_np.dtype)
             # return torch.from_numpy(transformed).to(device=input.device)

@@ -64,15 +64,17 @@ class BlocksBasisExpansion(BasisManager):
         
         # iterate through all different pairs of input/output representations
         # and, for each of them, build a basis
-        for i_repr in set(in_reprs):
-            for o_repr in set(out_reprs):
-                print(f"${i_repr=} ${o_repr=}")
+
+        # for i_repr in set(in_reprs):
+            # for o_repr in set(out_reprs):
+        for i_repr in in_reprs:
+            for o_repr in out_reprs:
                 reprs_names = (i_repr.name, o_repr.name)
+                print(reprs_names)
 
                 try:
                     basis = basis_generator(i_repr, o_repr)
-                    # print("basis", basis)
-                
+
                     block_expansion = block_basisexpansion(basis, points, basis_filter=basis_filter, recompute=recompute)
                     _block_expansion_modules[reprs_names] = block_expansion
                 
@@ -81,16 +83,15 @@ class BlocksBasisExpansion(BasisManager):
                     setattr(self, f"block_expansion_{self._escape_pair(reprs_names)}", block_expansion)
                     
                 except EmptyBasisException:
-                    print(f"Empty basis at {reprs_names}")
-                    # pass
+                    # print(f"Empty basis at {reprs_names}")
+                    pass
         
         if len(_block_expansion_modules) == 0:
             print('WARNING! The basis for the block expansion of the filter is empty!')
 
         # the list of all pairs of input/output representations which don't have an empty basis
-        print("_block_expansion_modules", _block_expansion_modules)
-        raise
         self._representations_pairs = sorted(list(_block_expansion_modules.keys()))
+        # {print(k, v.sampled_basis) for k, v in _block_expansion_modules.items()}
         
         self._n_pairs = len(set(in_reprs)) * len(set(out_reprs))
 
@@ -132,7 +133,7 @@ class BlocksBasisExpansion(BasisManager):
                 setattr(self, 'out_indices_{}'.format(self._escape_pair(io_pair)), out_indices)
 
             else:
-                out_indices, in_indices = jnp.meshgrid([_out_indices[io_pair[1]], _in_indices[io_pair[0]]])
+                out_indices, in_indices = jnp.meshgrid(*[_out_indices[io_pair[1]], _in_indices[io_pair[0]]])
                 in_indices = in_indices.reshape(-1)
                 out_indices = out_indices.reshape(-1)
                 
@@ -300,23 +301,24 @@ class BlocksBasisExpansion(BasisManager):
         coefficients = weights[self._weights_ranges[io_pair][0]:self._weights_ranges[io_pair][1]]
     
         # reshape coefficients for the batch matrix multiplication
-        coefficients = coefficients.view(-1, block_expansion.dimension())
+        coefficients = coefficients.reshape((-1, block_expansion.dimension()))
         
         # expand the current subset of basis vectors and set the result in the appropriate place in the filter
         _filter = block_expansion(coefficients)
         k, o, i, p = _filter.shape
         
-        _filter = _filter.view(
+        _filter = _filter.reshape((
             self._out_count[io_pair[1]],
             self._in_count[io_pair[0]],
             o,
             i,
             self.S,
-        )
-        _filter = _filter.transpose(1, 2)
+        ))
+        # _filter = _filter.transpose(1, 2)
+        _filter = jnp.swapaxes(_filter, 1, 2)
         return _filter
     
-    def forward(self, weights: Array) -> Array:
+    def __call__(self, weights: Array) -> Array:
         """
         Forward step of the Module which expands the basis and returns the filter built
 
@@ -364,17 +366,17 @@ class BlocksBasisExpansion(BasisManager):
                     ) #  device=weights.device
 
                 if self._contiguous[io_pair]:
-                    _filter[
+                    _filter = _filter.at[
                         out_indices[0]:out_indices[1],
                         in_indices[0]:in_indices[1],
                         :,
-                    ] = expanded.reshape(out_indices[2], in_indices[2], self.S)
+                    ].set(expanded.reshape(out_indices[2], in_indices[2], self.S))
                 else:
-                    _filter[
+                    _filter = _filter.at[
                         out_indices,
                         in_indices,
                         :,
-                    ] = expanded.reshape(-1, self.S)
+                    ].set(expanded.reshape(-1, self.S))
 
             # just in case
             if _filter is None:

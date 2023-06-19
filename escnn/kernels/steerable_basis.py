@@ -403,7 +403,13 @@ class SteerableKernelBasis(KernelBasis):
             B += self.dim_harmonic(j)
 
         steerable_basis = self.compute_harmonics(points)
-        self.sample_harmonics(steerable_basis, outs)
+        outs = self.sample_harmonics(steerable_basis, outs)
+
+        #NOTE: necesary for jax
+        B = 0
+        for j in self.js:
+            out = out.at[:, B:B + self.dim_harmonic(j), ...].set(outs[j])
+            B += self.dim_harmonic(j)
 
         return out
 
@@ -452,7 +458,6 @@ class SteerableKernelBasis(KernelBasis):
         return out
 
     def _sample_direct_sum(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
-    
         if out is None:
             out = {
                 j: jnp.zeros(
@@ -466,9 +471,6 @@ class SteerableKernelBasis(KernelBasis):
         #         if j in out:
         #             out[j][:] = 0.
     
-        for j in self.js:
-            if j in out:
-                assert out[j].shape == (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1])
 
         for ii, in_size in enumerate(self.in_sizes):
             for oo, out_size in enumerate(self.out_sizes):
@@ -479,7 +481,14 @@ class SteerableKernelBasis(KernelBasis):
                         j: out[j][:, b_s:b_e, o_s:o_e, i_s:i_e]
                         for j, (o_s, o_e, i_s, i_e, b_s, b_e) in slices.items()
                     }
-                    self.bases[ii][oo].sample_harmonics(points, out=blocks)
+                    blocks = self.bases[ii][oo].sample_harmonics(points, out=blocks)
+
+                    for j, (o_s, o_e, i_s, i_e, b_s, b_e) in slices.items():
+                        out[j] = out[j].at[:, b_s:b_e, o_s:o_e, i_s:i_e].set(blocks[j])
+
+        for j in self.js:
+            if j in out:
+                assert out[j].shape == (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1])
 
         return out
     
@@ -491,11 +500,11 @@ class SteerableKernelBasis(KernelBasis):
             
         for j in samples.keys():
             if self.A_inv is not None and self.B is not None:
-                out[j][:] = jnp.einsum("no,pboi,ij->pbnj", self.B.astype(samples[j].dtype), samples[j], self.A_inv.astype(samples[j].dtype))
+                out[j] = jnp.einsum("no,pboi,ij->pbnj", self.B.astype(samples[j].dtype), samples[j], self.A_inv.astype(samples[j].dtype))
             elif self.A_inv is not None:
-                out[j][:] = jnp.einsum("pboi,ij->pboj", samples[j], self.A_inv.astype(samples[j].dtype))
+                out[j] = jnp.einsum("pboi,ij->pboj", samples[j], self.A_inv.astype(samples[j].dtype))
             elif self.B is not None:
-                out[j][:] = jnp.einsum("no,pboi->pbni", self.B.astype(samples[j].dtype), samples[j])
+                out[j] = jnp.einsum("no,pboi->pbni", self.B.astype(samples[j].dtype), samples[j])
             else:
                 out[j][...] = samples[j]
         

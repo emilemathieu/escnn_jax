@@ -45,7 +45,7 @@ def _generalized_he_init_variances(basismanager: BasisManager):
     for w, attr in enumerate(basis_info):
         i, o = attr["in_irreps_position"], attr["out_irreps_position"]
         in_irrep, out_irrep = attr["in_irrep"], attr["out_irrep"]
-        vars[w] = 1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)])
+        vars = vars.at[w].set(1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)]))
 
     return vars
 

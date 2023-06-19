@@ -2,12 +2,12 @@
 import escnn.group
 
 from .basis import AdjointBasis, EmptyBasisException, KernelBasis, UnionBasis
-
-from .steerable_filters_basis import SteerableFiltersBasis, PointBasis
-
-from .steerable_basis import SteerableKernelBasis, IrrepBasis
-
-from .wignereckart_solver import WignerEckartBasis, RestrictedWignerEckartBasis
+from .polar_basis import (CircularShellsBasis, GaussianRadialProfile,
+                          SphericalShellsBasis)
+from .r2 import *
+from .steerable_basis import IrrepBasis, SteerableKernelBasis
+from .steerable_filters_basis import PointBasis, SteerableFiltersBasis
+from .wignereckart_solver import RestrictedWignerEckartBasis, WignerEckartBasis
 
 
 def kernels_on_point(in_repr: escnn.group.Representation, out_repr: escnn.group.Representation) -> KernelBasis:
@@ -44,24 +44,24 @@ __all__ = [
     # # Steerable Filters Bases
     # 'SteerableFiltersBasis',
     'PointBasis',
-    # "SphericalShellsBasis",
-    # "CircularShellsBasis",
-    # 'GaussianRadialProfile',
-    # "SparseOrbitBasis",
-    # "SparseOrbitBasisWithIcosahedralSymmetry",
+    "SphericalShellsBasis",
+    "CircularShellsBasis",
+    'GaussianRadialProfile',
+    "SparseOrbitBasis",
+    "SparseOrbitBasisWithIcosahedralSymmetry",
     # # Other useful modules
-    # "HarmonicPolynomialR3Generator",
+    "HarmonicPolynomialR3Generator",
     # # Generic group acting on R^0
-    # "kernels_on_point",
+    "kernels_on_point",
     # # R2 bases
-    # "kernels_Flip_act_R2",
-    # "kernels_DN_act_R2",
-    # "kernels_O2_act_R2",
-    # "kernels_Trivial_act_R2",
-    # "kernels_CN_act_R2",
-    # "kernels_SO2_act_R2",
-    # "kernels_SO2_subgroup_act_R2",
-    # "kernels_O2_subgroup_act_R2",
+    "kernels_Flip_act_R2",
+    "kernels_DN_act_R2",
+    "kernels_O2_act_R2",
+    "kernels_Trivial_act_R2",
+    "kernels_CN_act_R2",
+    "kernels_SO2_act_R2",
+    "kernels_SO2_subgroup_act_R2",
+    "kernels_O2_subgroup_act_R2",
     # # R3 bases
     # "kernels_O3_act_R3",
     # "kernels_SO3_act_R3",

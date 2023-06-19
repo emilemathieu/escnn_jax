@@ -20,8 +20,6 @@ __all__ = ["Linear"]
 class Linear(EquivariantModule):
     bias: Array
     weights: Array
-    space: GSpace
-    inference: bool = False
     bias_expansion: Array
     expanded_bias: Array
     matrix: Array
@@ -30,11 +28,17 @@ class Linear(EquivariantModule):
     def __init__(self,
                  in_type: FieldType,
                  out_type: FieldType,
-                 bias: bool = True,
+                 use_bias: bool = True,
                  basisexpansion: str = 'blocks',
                  recompute: bool = False,
                  initialize: bool = True,
                  inference: bool = False,
+                #  matrix: Array = None,
+                #  expanded_bias: Array = None,
+                #  weights: Array = None,
+                #  bias: Array = None,
+                #  bias_expansion: Array = None,
+                #  _basisexpansion: BlocksBasisExpansion = None,
                  *,
                  key: PRNGKeyArray
                  ):
@@ -126,7 +130,7 @@ class Linear(EquivariantModule):
         self.space = in_type.gspace
         self.inference = inference
 
-        if bias:
+        if use_bias:
             # bias can be applied only to trivial irreps inside the representation
             # to apply bias to a field we learn a bias for each trivial irreps it contains
             # and, then, we transform it with the change of basis matrix to be able to apply it to the whole field
@@ -186,21 +190,16 @@ class Linear(EquivariantModule):
             raise ValueError('Basis Expansion algorithm "%s" not recognized' % basisexpansion)
 
         # self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
-        print("self.basisexpansion", self.basisexpansion)
-        print("self.basisexpansion.dimension()", self.basisexpansion.dimension())
         self.weights = jnp.zeros((self.basisexpansion.dimension()))
 
         filter_size = (out_type.size, in_type.size)
-        print("filter_size", filter_size)
         # self.register_buffer("matrix", torch.zeros(*filter_size))
         self.matrix = jnp.zeros(filter_size)
         if initialize:
             # by default, the weights are initialized with a generalized form of He's weight initialization
             # init.generalized_he_init(self.weights.data, self.basisexpansion)
-           self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
-           print("self.weights", self.weights)
-           raise
-    
+            self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
+
     def __call__(self, input: GeometricTensor,):
         r"""
         Convolve the input with the expanded matrix and bias.
@@ -263,6 +262,7 @@ class Linear(EquivariantModule):
     
         return _matrix, _bias
 
+
     def train(self, mode=True):
         r"""
 
@@ -290,21 +290,25 @@ class Linear(EquivariantModule):
             _matrix, _bias = self.expand_parameters()
         
             # self.register_buffer("matrix", _matrix)
-            self.matrix = _matrix
+            matrix = _matrix
             if _bias is not None:
                 # self.register_buffer("expanded_bias", _bias)
-                self.expanded_bias = _bias
-            else:
-                self.expanded_bias = None
+                expanded_bias = _bias
+            else:   
+                expanded_bias = None
+            new = eqx.tree_at(lambda m: m.matrix, self, replace=matrix)
+            new = eqx.tree_at(lambda m: m.expanded_bias, new, replace=expanded_bias)
     
         else:
-            # TODO thoroughly check this is not causing problems
-            if hasattr(self, "matrix"):
-                del self.matrix
-            if hasattr(self, "expanded_bias"):
-                del self.expanded_bias
+            new = eqx.tree_at(lambda m: m.matrix, self, replace=None)
+            new = eqx.tree_at(lambda m: m.expanded_bias, new, replace=None)
+            # # TODO thoroughly check this is not causing problems
+            # if hasattr(self, "matrix"):
+            #     del self.matrix
+            # if hasattr(self, "expanded_bias"):
+            #     del self.expanded_bias
     
-        return super(Linear, self).train(mode)
+        return super(Linear, new).train(mode)
 
     def evaluate_output_shape(self, input_shape: Tuple) -> Tuple:
         assert len(input_shape) == 2
@@ -320,7 +324,7 @@ class Linear(EquivariantModule):
         # set to eval mode so the matrix and the bias are updated with the current
         # values of the weights
         
-        # self.eval()
+        self = self.eval()
         _matrix = self.matrix
         _bias = self.expanded_bias
         
@@ -337,9 +341,9 @@ class Linear(EquivariantModule):
         linear = eqx.nn.Linear(self.in_type.size, self.out_type.size, use_bias=has_bias, key=None)
 
         # set the weights and the bias
-        linear.weight = _matrix
+        linear = eqx.tree_at(lambda m: m.weight, linear, replace=_matrix)
         if has_bias:
-            linear.bias = _bias
+            linear = eqx.tree_at(lambda m: m.bias, linear, replace=_bias)
 
         return linear
 
@@ -354,6 +358,9 @@ class Linear(EquivariantModule):
         for el in self.space.testing_elements:
             out1 = np.array(self(x).transform_fibers(el).tensor)
             out2 = np.array(self(x.transform_fibers(el)).tensor)
+
+            # print("out1", out1)
+            # print("out2", out2 )
         
             errs = np.abs(out1 - out2)
         
