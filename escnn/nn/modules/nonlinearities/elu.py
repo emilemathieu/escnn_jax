@@ -1,25 +1,28 @@
 
-from typing import Any, List, Tuple
+from escnn.gspaces import *
+from escnn.nn import FieldType
+from escnn.nn import GeometricTensor
 
+from ..equivariant_module import EquivariantModule
+
+# import torch
+# import torch.nn.functional as F
 import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, PRNGKeyArray
 
-from escnn.gspaces import *
-from escnn.nn import FieldType, GeometricTensor
+from typing import List, Tuple, Any
 
-from ..equivariant_module import EquivariantModule
-
-__all__ = ["ReLU"]
+__all__ = ["ELU"]
 
 
-class ReLU(EquivariantModule):
+class ELU(EquivariantModule):
     
-    def __init__(self, in_type: FieldType):
+    def __init__(self, in_type: FieldType, alpha: float = 1.0):
         r"""
         
-        Module that implements a pointwise ReLU to every channel independently.
+        Module that implements a pointwise ELU to every channel independently.
         The input representation is preserved by this operation and, therefore, it equals the output
         representation.
         
@@ -27,13 +30,14 @@ class ReLU(EquivariantModule):
         
         Args:
             in_type (FieldType):  the input field type
+            alpha (float): the :math:`\alpha` value for the ELU formulation. Default: 1.0
             inplace (bool, optional): can optionally do the operation in-place. Default: ``False``
             
         """
         
         assert isinstance(in_type.gspace, GSpace)
         
-        super(ReLU, self).__init__()
+        super(ELU, self).__init__()
         
         for r in in_type.representations:
             assert 'pointwise' in r.supported_nonlinearities, \
@@ -41,26 +45,30 @@ class ReLU(EquivariantModule):
         
         self.space = in_type.gspace
         self.in_type = in_type
+        self.alpha = alpha
         
         # the representation in input is preserved
         self.out_type = in_type
-        
+    
     def __call__(self, input: GeometricTensor) -> GeometricTensor:
         r"""
 
-        Applies ReLU function on the input fields
+        Applies ELU function on the input fields
 
         Args:
             input (GeometricTensor): the input feature map
 
         Returns:
-            the resulting feature map after relu has been applied
+            the resulting feature map after elu has been applied
 
         """
         
-        assert input.type == self.in_type, "Error! the type of the input does not match the input type of this module"
-        # return GeometricTensor(F.relu(input.tensor, inplace=self._inplace), self.out_type, input.coords)
-        return GeometricTensor(jax.nn.relu(input.tensor), self.out_type, input.coords)
+        assert input.type == self.in_type
+        # return GeometricTensor(
+        #     F.elu(input.tensor, alpha=self.alpha, inplace=self._inplace),
+        #     self.out_type, input.coords
+        # )
+        return GeometricTensor(jax.nn.elu(input.tensor), self.out_type, input.coords)
 
     def evaluate_output_shape(self, input_shape: Tuple[int, ...]) -> Tuple[int, ...]:
 
@@ -84,14 +92,14 @@ class ReLU(EquivariantModule):
         errors = []
         
         for el in self.space.testing_elements:
-            out1 =  np.array(self(x).transform_fibers(el).tensor)
-            out2 =  np.array(self(x.transform_fibers(el)).tensor)
+            out1 = self(x).transform_fibers(el)
+            out2 = self(x.transform_fibers(el))
             
-            errs = (out1 - out2)
+            errs = (out1.tensor - out2.tensor).detach().numpy()
             errs = np.abs(errs).reshape(-1)
             print(el, errs.max(), errs.mean(), errs.var())
             
-            assert jnp.allclose(out1, out2, atol=atol, rtol=rtol), \
+            assert jnp.allclose(out1.tensor, out2.tensor, atol=atol, rtol=rtol), \
                 'The error found during equivariance check with element "{}" is too high: max = {}, mean = {} var ={}' \
                     .format(el, errs.max(), errs.mean(), errs.var())
             
@@ -100,16 +108,17 @@ class ReLU(EquivariantModule):
         return errors
 
     def extra_repr(self):
-        return 'inplace={}, type={}'.format(
-            self._inplace, self.in_type
+        return 'alpha={}, inplace={}, type={}'.format(
+            self.alpha, self._inplace, self.in_type
         )
-    
+
     def export(self):
         r"""
-        Export this module to a normal PyTorch :class:`torch.nn.ReLU` module and set to "eval" mode.
+        Export this module to a normal PyTorch :class:`torch.nn.ELU` module and set to "eval" mode.
 
         """
     
         self.eval()
     
-        return torch.nn.ReLU(inplace=self._inplace)
+        return torch.nn.ELU(alpha=self.alpha, inplace=self._inplace)
+

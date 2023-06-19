@@ -18,7 +18,6 @@ class EquivariantModule(eqx.Module, ABC):
     in_type: FieldType
     out_type: FieldType
     space: GSpace
-    inference: bool
 
 
     def __init__(self):
@@ -61,6 +60,8 @@ class EquivariantModule(eqx.Module, ABC):
         
         # FieldType: type of the :class:`~escnn.nn.GeometricTensor` returned as output
         self.out_type = None
+
+        self.space = None
 
     def eval(self):
         return self.train(False)

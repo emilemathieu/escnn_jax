@@ -550,7 +550,7 @@ class RestrictedWignerEckartBasis(IrrepBasis):
             return False
         else:
             for b, (j, i) in enumerate(zip(self.js, other.js)):
-                if j!=i or not jnp.allclose(self.coeff(b), other.coeff(b)):
+                if j!=i or not jnp.allclose(jnp.array(self.coeff(b)), jnp.array(other.coeff(b))):
                     return False
             return True
 

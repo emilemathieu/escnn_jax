@@ -10,9 +10,9 @@
 # from .vectorfield import VectorFieldNonLinearity
 
 from .relu import ReLU
-# from .elu import ELU
+from .elu import ELU
 
-# from .fourier import *
+from .fourier import *
 # from .fourier_quotient import *
 
 # from .tensor import *
@@ -28,9 +28,9 @@ __all__ = [
     # "InducedGatedNonLinearity1",
     # "VectorFieldNonLinearity",
     "ReLU",
-    # "ELU",
-    # "FourierPointwise",
-    # "FourierELU",
+    "ELU",
+    "FourierPointwise",
+    "FourierELU",
     # "QuotientFourierPointwise",
     # "QuotientFourierELU",
     # "TensorProductModule",
