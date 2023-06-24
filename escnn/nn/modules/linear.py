@@ -18,12 +18,13 @@ __all__ = ["Linear"]
 
 
 class Linear(EquivariantModule):
-    bias: Array
     weights: Array
+    bias: Optional[Array]
     bias_expansion: Array
-    expanded_bias: Array
+    expanded_bias: Optional[Array]
     matrix: Array
-    _basisexpansion: Optional[BlocksBasisExpansion]
+    _basisexpansion: Optional[BlocksBasisExpansion] = eqx.field(static=True)
+    inference: bool
 
     def __init__(self,
                  in_type: FieldType,
@@ -33,12 +34,6 @@ class Linear(EquivariantModule):
                  recompute: bool = False,
                  initialize: bool = True,
                  inference: bool = False,
-                #  matrix: Array = None,
-                #  expanded_bias: Array = None,
-                #  weights: Array = None,
-                #  bias: Array = None,
-                #  bias_expansion: Array = None,
-                #  _basisexpansion: BlocksBasisExpansion = None,
                  *,
                  key: PRNGKeyArray
                  ):
@@ -190,7 +185,7 @@ class Linear(EquivariantModule):
             raise ValueError('Basis Expansion algorithm "%s" not recognized' % basisexpansion)
 
         # self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
-        self.weights = jnp.zeros((self.basisexpansion.dimension()))
+        # self.weights = jnp.zeros((self.basisexpansion.dimension()))
 
         filter_size = (out_type.size, in_type.size)
         # self.register_buffer("matrix", torch.zeros(*filter_size))
@@ -198,7 +193,7 @@ class Linear(EquivariantModule):
         if initialize:
             # by default, the weights are initialized with a generalized form of He's weight initialization
             # init.generalized_he_init(self.weights.data, self.basisexpansion)
-            self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
+            self.weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
 
     def __call__(self, input: GeometricTensor,):
         r"""
@@ -347,7 +342,7 @@ class Linear(EquivariantModule):
 
         return linear
 
-    def check_equivariance(self, key, atol: float = 1e-6, rtol: float = 1e-6, assertion: bool = True, verbose: bool = True):
+    def check_equivariance(self, key: PRNGKeyArray, atol: float = 1e-6, rtol: float = 1e-6, assertion: bool = True, verbose: bool = True):
     
         # x = torch.randn(10, self.in_type.size)
         x = jax.random.normal(key, (10, self.in_type.size))
@@ -355,7 +350,12 @@ class Linear(EquivariantModule):
     
         errors = []
 
+        # model = eqx.filter_jit(self)
+        model = self
+
         for el in self.space.testing_elements:
+            out = model(x)
+            # print(out.transform_fibers(el))
             out1 = np.array(self(x).transform_fibers(el).tensor)
             out2 = np.array(self(x.transform_fibers(el)).tensor)
 

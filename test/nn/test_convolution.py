@@ -60,8 +60,10 @@ class TestConvolution(TestCase):
         g = rot2dOnR2(-1, N)
 
         # reprs = [g.irrep(*irr) for irr in g.fibergroup.bl_irreps(3)] + [g.fibergroup.bl_regular_representation(3)]
-        reprs = [g.irrep(*irr) for irr in g.fibergroup.bl_irreps(2)]
-        r1 = r2 = g.type(*reprs)
+        # reprs = [g.irrep(*irr) for irr in g.fibergroup.bl_irreps(1)]
+        # r1 = r2 = g.type(*reprs)
+        r1 = g.type(*[g.irrep(*irr) for irr in g.fibergroup.bl_irreps(2)])
+        r2 = g.type(*[g.irrep(*irr) for irr in g.fibergroup.bl_irreps(0)])
 
         key, w_key, e_key = jax.random.split(key, 3)
         s = 7
@@ -73,17 +75,15 @@ class TestConvolution(TestCase):
         cl = R2Conv(r1, r2, s,
                     sigma=sigma,
                     frequencies_cutoff=fco,
-                    use_bias=True,
+                    use_bias=False,
                     key = w_key
                     )
         
-        for _ in range(8):
+        for i in range(8):
+            print(i)
             key, w_key, e_key = jax.random.split(key, 3)
-            # cl.basisexpansion._init_weights()
-            # init.generalized_he_init(cl.weights.data, cl.basisexpansion)
             weights = init.generalized_he_init(key, cl.weights, cl.basisexpansion)
             cl = eqx.tree_at(lambda m: m.weights, cl, replace=weights)
-            cl = cl.eval()
             cl.check_equivariance(e_key)
 
     # def test_dihedral(self):

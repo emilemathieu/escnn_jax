@@ -72,7 +72,8 @@ class GaussianRadialProfile(KernelBasis):
         setattr(self, 'radii', jnp.array(radii, dtype=float).reshape(1, -1, 1, 1))
         setattr(self, 'sigma', jnp.array(sigma, dtype=float).reshape(1, -1, 1, 1))
     
-    def sample(self, radii: Array, out: Array = None) -> Array:
+    # def sample(self, radii: Array, out: Array = None) -> Array:
+    def sample(self, radii: Array) -> Array:
         r"""
 
         Sample the continuous basis elements on the discrete set of radii in ``radii``.
@@ -92,10 +93,10 @@ class GaussianRadialProfile(KernelBasis):
         assert radii.shape[1] == 1
         S = radii.shape[0]
         
-        if out is None:
-            out = jnp.empty((S, self.dim, self.shape[0], self.shape[1]), dtype=radii.dtype) # , device=radii.device
+        # if out is None:
+        #     out = jnp.empty((S, self.dim, self.shape[0], self.shape[1]), dtype=radii.dtype) # , device=radii.device
         
-        assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
+        # assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
         
         radii = radii.reshape(-1, 1, 1, 1)
 
@@ -108,6 +109,8 @@ class GaussianRadialProfile(KernelBasis):
         # else:
         #     out = jnp.exp(-0.5 * d / self.sigma ** 2, out=out)
         out = jnp.exp(-0.5 * d / self.sigma ** 2)
+
+        assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
 
         return out
     
@@ -136,7 +139,7 @@ def circular_harmonics(points: Array, L: int, phase: float = 0.):
     assert len(points.shape) == 2
     assert points.shape[1] == 2
 
-    device = points.device
+    # device = points.device
     dtype = points.dtype
 
     S = points.shape[0]
@@ -151,11 +154,15 @@ def circular_harmonics(points: Array, L: int, phase: float = 0.):
 
     del freqs, angles
 
-    Y = jnp.empty((S, 2 * L + 1), dtype=dtype) # , device=device)
-
-    Y = Y.at[:, 0].set(1.)
-    Y = Y.at[:, 1::2].set(jnp.cos(freqs_times_angles))
-    Y = Y.at[:, 2::2].set(jnp.sin(freqs_times_angles))
+    # Y = jnp.empty((S, 2 * L + 1), dtype=dtype) # , device=device)
+    # Y = Y.at[:, 0].set(1.)
+    # Y = Y.at[:, 1::2].set(jnp.cos(freqs_times_angles))
+    # Y = Y.at[:, 2::2].set(jnp.sin(freqs_times_angles))
+    odd_freqs = jnp.cos(freqs_times_angles)
+    even_freqs = jnp.sin(freqs_times_angles)
+    Y = jnp.concatenate([odd_freqs, even_freqs], axis=1)
+    Y = jax.vmap(lambda x: jnp.ravel(x, order='F'))(Y)
+    Y = jnp.concatenate([jnp.ones((S, 1)), Y], axis=1)
 
     return Y
 
@@ -725,7 +732,8 @@ class CircularShellsBasis(SteerableFiltersBasis):
             # self.register_buffer('_filter', _filter)
             setattr(self, '_filter', _filter)
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    # def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: Array) -> Array:
         r"""
 
         Sample the continuous basis elements on a discrete set of ``points`` in the space :math:`\R^n`.
@@ -752,8 +760,8 @@ class CircularShellsBasis(SteerableFiltersBasis):
         non_origin_mask = (radii > 1e-9).reshape(-1)
         sphere = points[non_origin_mask, :] / radii[non_origin_mask, :]
 
-        if out is None:
-            out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
+        # if out is None:
+        #     out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
 
 
         # sample the radial basis
@@ -765,31 +773,43 @@ class CircularShellsBasis(SteerableFiltersBasis):
 
         # sample the angular basis
         circular = jnp.empty((S, self._angular_dim), dtype=points.dtype)
-        # circular[:] = np.nan
+        # print("circular", circular.shape)
+        # print("circular[non_origin_mask, :]", circular[non_origin_mask, :].shape)
+        # print("circular[~non_origin_mask, :1]", circular[~non_origin_mask, :1].shape)
+        # print("circular[~non_origin_mask, 1:]", circular[~non_origin_mask, 1:].shape)
+        # print(non_origin_mask)
+        # # circular[:] = np.nan
 
         # where r>0, we sample all frequencies
         circular = circular.at[non_origin_mask, :].set(circular_harmonics(sphere, self.L, phase=self.axis))
 
-        # only frequency 0 is sampled at the origin. Other frequencies are set to 0
-        circular = circular.at[~non_origin_mask, :1].set(1.)
+        # # only frequency 0 is sampled at the origin. Other frequencies are set to 0
+        # circular = circular.at[~non_origin_mask, :1].set(1.)
 
-        # This trick allows us to compute meaningful gradients at the origin
-        # Unfortunately, only the newest versions of PyTorch and CUDA support these complex operations
-        # complex_points = points[~non_origin_mask, 0] + 1j * points[~non_origin_mask, 1]
-        # complex_powers = complex_points.view(S, 1).pow(torch.arange(1, self.L).view(1, self.L))
-        # circular[~non_origin_mask, 1::2] = complex_powers.real
-        # circular[~non_origin_mask, 2::2] = complex_powers.img
-        circular = circular.at[~non_origin_mask, 1:].set(0.)
+        # # This trick allows us to compute meaningful gradients at the origin
+        # # Unfortunately, only the newest versions of PyTorch and CUDA support these complex operations
+        # # complex_points = points[~non_origin_mask, 0] + 1j * points[~non_origin_mask, 1]
+        # # complex_powers = complex_points.view(S, 1).pow(torch.arange(1, self.L).view(1, self.L))
+        # # circular[~non_origin_mask, 1::2] = complex_powers.real
+        # # circular[~non_origin_mask, 2::2] = complex_powers.img
+        # circular = circular.at[~non_origin_mask, 1:].set(0.)
+        origin = jnp.concatenate([jnp.ones((1)), jnp.zeros((self._angular_dim - 1))])
+        circular = circular.at[~non_origin_mask, :].set(origin)
+
+        # non_origin = circular_harmonics(sphere, self.L, phase=self.axis)
+        # circular2 = jnp.where(non_origin_mask, non_origin, non_origin)
+        # assert jnp.allclose(circular, circular2)
 
         tensor_product = jnp.einsum("pa,pb->pab", radial, circular)
 
         n_radii = len(self.radial)
 
-        if self._filter is None:
-            tmp_out = out
-        else:
-            tmp_out = jnp.empty((S, self._angular_dim*n_radii, 1, 1), dtype=points.dtype)
-
+        # if self._filter is None:
+        #     tmp_out = out
+        # else:
+        #     tmp_out = jnp.empty((S, self._angular_dim*n_radii, 1, 1), dtype=points.dtype)
+        # tmp_out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
+        tmp_out = []
         for j in range(self.L+1):
             dim = 2 if j > 0 else 1
             last = 2*j+1
@@ -797,7 +817,10 @@ class CircularShellsBasis(SteerableFiltersBasis):
             # tmp_out[:, first * n_radii:last * n_radii, 0, 0].view(
             #     S, n_radii, dim
             # )[:] = tensor_product[:, :, first:last]
-            tmp_out = tmp_out.at[:, first * n_radii:last * n_radii, 0, 0].set(tensor_product[:, :, first:last].reshape(S, dim * n_radii))
+            prod = tensor_product[:, :, first:last].reshape(S, dim * n_radii)
+            # tmp_out = tmp_out.at[:, first * n_radii:last * n_radii, 0, 0].set(prod)
+            tmp_out.append(prod)
+        tmp_out = jnp.concatenate(tmp_out, axis=1)[..., None, None]
 
         if self._filter is not None:
             # out[:] = tmp_out[:, self._filter, ...]

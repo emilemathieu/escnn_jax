@@ -15,9 +15,9 @@ __all__ = ["EquivariantModule"]
 
 
 class EquivariantModule(eqx.Module, ABC):
-    in_type: FieldType
-    out_type: FieldType
-    space: GSpace
+    in_type: FieldType = eqx.field(static=True)
+    out_type: FieldType = eqx.field(static=True)
+    space: GSpace = eqx.field(static=True)
 
 
     def __init__(self):
@@ -62,6 +62,9 @@ class EquivariantModule(eqx.Module, ABC):
         self.out_type = None
 
         self.space = None
+
+    def register_buffer(self, key, value):
+        setattr(self, key, value)
 
     def eval(self):
         return self.train(False)

@@ -70,7 +70,7 @@ class BlocksBasisExpansion(BasisManager):
         for i_repr in in_reprs:
             for o_repr in out_reprs:
                 reprs_names = (i_repr.name, o_repr.name)
-                print(reprs_names)
+                # print(reprs_names)
 
                 try:
                     basis = basis_generator(i_repr, o_repr)

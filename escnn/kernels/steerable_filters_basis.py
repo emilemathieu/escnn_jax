@@ -131,7 +131,8 @@ class SteerableFiltersBasis(KernelBasis):
         #
         # return out
 
-    def sample_as_dict(self, points: Array, out: Array = None) -> Dict[Tuple, Array]:
+    # def sample_as_dict(self, points: Array, out: Array = None) -> Dict[Tuple, Array]:
+    def sample_as_dict(self, points: Array) -> Dict[Tuple, Array]:
         r"""
 
         Sample the continuous basis elements on the discrete set of points in ``points``.
@@ -157,11 +158,12 @@ class SteerableFiltersBasis(KernelBasis):
 
         S = points.shape[0]
 
-        if out is not None:
-            assert out.shape == (S, self.dim), (out.shape, self.dim, S)
-            out = out.reshape(S, self.dim, 1, 1)
+        # if out is not None:
+        #     assert out.shape == (S, self.dim), (out.shape, self.dim, S)
+        #     out = out.reshape(S, self.dim, 1, 1)
 
-        out = self.sample(points, out)
+        # out = self.sample(points, out)
+        out = self.sample(points)
 
         out = out.reshape(S, self.dim)
 

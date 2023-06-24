@@ -23,22 +23,24 @@ __all__ = ["_RdConv"]
 
 
 class _RdConv(EquivariantModule, ABC):
-    d: int
-    kernel_size: int
-    stride: int
-    dilation: int
-    padding: int
-    padding_mode: str
-    groups: int
-    _reversed_padding_repeated_twice: List[int]
-    use_bias: bool
+    d: int = eqx.field(static=True)
+    kernel_size: int = eqx.field(static=True)
+    stride: int = eqx.field(static=True)
+    dilation: int = eqx.field(static=True)
+    padding: int = eqx.field(static=True)
+    padding_mode: str = eqx.field(static=True)
+    groups: int = eqx.field(static=True)
+    _reversed_padding_repeated_twice: List[int] = eqx.field(static=True)
+    use_bias: bool = eqx.field(static=True)
 
-    bias: Array
+    _basisexpansion: Optional[BlocksBasisExpansion] = eqx.field(static=True)
+    bias: Optional[Array]
     filter: Array
     weights: Array
     bias_expansion: Array
     expanded_bias: Array
-    _basisexpansion: Optional[BlocksBasisExpansion]
+
+    inference: bool
     
     def __init__(self,
                  in_type: FieldType,
@@ -240,9 +242,11 @@ class _RdConv(EquivariantModule, ABC):
             else:
                 self.bias = None
                 self.expanded_bias = None
+                self.bias_expansion = None
         else:
             self.bias = None
             self.expanded_bias = None
+            self.bias_expansion = None
 
         # compute the coordinates of the centers of the cells in the grid where the filter is sampled
         grid = get_grid_coords(d, kernel_size, dilation)
@@ -264,7 +268,7 @@ class _RdConv(EquivariantModule, ABC):
             ''')
         
         # self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
-        self.weights = jnp.zeros(self.basisexpansion.dimension())
+        # self.weights = jnp.zeros(self.basisexpansion.dimension())
         
         filter_size = (out_type.size, in_type.size) + (kernel_size,) * d
         # self.register_buffer("filter", torch.zeros(*filter_size))
@@ -329,7 +333,6 @@ class _RdConv(EquivariantModule, ABC):
         else:
             # retrieve the filter and the bias
             _filter, _bias = self.expand_parameters()
-        _bias = jnp.expand_dims(_bias, axis=tuple(range(-1, -(self.d + 1), -1)))
         # use it for convolution and return the result
 
 
@@ -343,6 +346,7 @@ class _RdConv(EquivariantModule, ABC):
                 feature_group_count=self.groups,
             )
             if self.use_bias:
+                _bias = jnp.expand_dims(_bias, axis=tuple(range(-1, -(self.d + 1), -1)))
                 output = jax.vmap(lambda x: x + _bias)(output)
         else:
             raise NotImplementedError()
@@ -386,7 +390,8 @@ class _RdConv(EquivariantModule, ABC):
             #     del self.expanded_bias
             _filter, _bias = self.expand_parameters()
             new = eqx.tree_at(lambda m: m.filter, self, replace=_filter)
-            new = eqx.tree_at(lambda m: m.expanded_bias, new, replace=_bias)
+            if _bias is not None:
+                new = eqx.tree_at(lambda m: m.expanded_bias, new, replace=_bias)
         
         # elif self.training:
         else:
@@ -421,7 +426,8 @@ class _RdConv(EquivariantModule, ABC):
         if extra_repr:
             extra_lines = extra_repr.split('\n')
 
-        main_str = self._get_name() + '('
+        # main_str = self._get_name() + '('
+        main_str = '('
         if len(extra_lines) == 1:
             main_str += extra_lines[0]
         else:

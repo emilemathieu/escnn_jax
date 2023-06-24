@@ -101,20 +101,21 @@ class WignerEckartBasis(IrrepBasis):
         # return getattr(self, f'coeff_{idx}')
         return self.coeffs[idx]
 
-    def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
-        if out is None:
-            out = {
-                j: jnp.zeros(
-                    (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]),
-                    dtype=points[j].dtype
-                )
-                for j in self.js
-            } # device=points[j].device
-    
+    # def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    def sample_harmonics(self, points: Dict[Tuple, Array]) -> Dict[Tuple, Array]:
+        # if out is None:
+        #     out = {
+        #         j: jnp.zeros(
+        #             (points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]),
+        #             dtype=points[j].dtype
+        #         )
+        #         for j in self.js
+        #     } # device=points[j].device
+        out = {}
 
         for b, j in enumerate(self.js):
-            if j not in out:
-                continue
+            # if j not in out:
+                # continue
             coeff = self.coeff(b)
             
             jJl = coeff.shape[1]
@@ -132,11 +133,11 @@ class WignerEckartBasis(IrrepBasis):
             #     coeff, Ys,
             # )
             
-            shape = (Ys.shape[0],
-                self.group.irrep(*j).sum_of_squares_constituents, jJl,
-                Ys.shape[1],
-                self.out_irrep.size, self.in_irrep.size,
-            )
+            # shape = (Ys.shape[0],
+            #     self.group.irrep(*j).sum_of_squares_constituents, jJl,
+            #     Ys.shape[1],
+            #     self.out_irrep.size, self.in_irrep.size,
+            # )
             out[j] = jnp.einsum(
                 # 'Nnksm,miS->NnksiS',
                 'kspnm,qim->qksipn',

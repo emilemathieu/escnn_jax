@@ -811,6 +811,11 @@ class GeometricTensor:
 
         return r
 
+    @property
+    def dtype(self):
+        r"""dtype. Equivalent to ``self.array.dtype``."""
+        return self.tensor.dtype
+
 
 def tensor_directsum(tensors: List['GeometricTensor']) -> 'GeometricTensor':
     r"""

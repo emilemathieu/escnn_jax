@@ -26,7 +26,8 @@ def _generalized_he_init_variances(basismanager: BasisManager):
 
     """
 
-    vars = jnp.ones((basismanager.dimension(),))
+    # vars = jnp.ones((basismanager.dimension(),))
+    vars = []
 
     inputs_count = defaultdict(lambda: set())
     basis_count = defaultdict(int)
@@ -45,14 +46,17 @@ def _generalized_he_init_variances(basismanager: BasisManager):
     for w, attr in enumerate(basis_info):
         i, o = attr["in_irreps_position"], attr["out_irreps_position"]
         in_irrep, out_irrep = attr["in_irrep"], attr["out_irrep"]
-        vars = vars.at[w].set(1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)]))
+        # vars = vars.at[w].set(1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)]))
+        vars.append(1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)]))
+    vars = jnp.array(vars)
 
     return vars
 
 
 cached_he_vars = {}
 
-def generalized_he_init(key, tensor: Array, basismanager: BasisManager, cache: bool = False):
+# def generalized_he_init(key, tensor: Array, basismanager: BasisManager, cache: bool = False):
+def generalized_he_init(key, shape, basismanager: BasisManager, cache: bool = False):
     r"""
     
     Initialize the weights of a convolutional layer with a generalized He's weight initialization method.
@@ -74,7 +78,8 @@ def generalized_he_init(key, tensor: Array, basismanager: BasisManager, cache: b
     """
     # Initialization
     
-    assert tensor.shape == (basismanager.dimension(), )
+    # assert tensor.shape == (basismanager.dimension(), )
+    assert shape == (basismanager.dimension(), )
 
     if cache and basismanager not in cached_he_vars:
         cached_he_vars[basismanager] = _generalized_he_init_variances(basismanager)
@@ -85,7 +90,7 @@ def generalized_he_init(key, tensor: Array, basismanager: BasisManager, cache: b
         vars = _generalized_he_init_variances(basismanager)
 
     # tensor[:] = vars.to(device=tensor.device) * torch.randn_like(tensor)
-    return vars * jax.random.normal(key, tensor.shape)
+    return vars * jax.random.normal(key, shape)
 
 
 def deltaorthonormal_init(key, tensor: Array, basismanager: BasisManager):

@@ -34,6 +34,7 @@ class SingleBlockBasisExpansion(BasisManager):
             
         """
 
+        # print("SingleBlockBasisExpansion")
         super(SingleBlockBasisExpansion, self).__init__()
 
         # This is a hack to prevent PyTorch to register basis as a submodule
@@ -60,13 +61,18 @@ class SingleBlockBasisExpansion(BasisManager):
         # sample the basis on the grid
         # basis has shape (p, k, o, i)
         # permute to (k, o, i, p)
+        # print("basis.sample BEG")
         sampled_basis = basis.sample(jnp.array(
             points, dtype=float
         )).transpose(1, 2, 3, 0)
+        # print("basis.sample END")
+        # print("basis", sampled_basis.device())
 
         # normalize the basis
         sizes = jnp.array(sizes, dtype=sampled_basis.dtype)
+        # print("normalize_basis BEG")
         sampled_basis = normalize_basis(sampled_basis, sizes)
+        # print("normalize_basis END")
 
         # discard the basis which are close to zero everywhere
         norms = (sampled_basis ** 2).reshape(sampled_basis.shape[0], -1).sum(1) > 1e-2
@@ -78,6 +84,7 @@ class SingleBlockBasisExpansion(BasisManager):
         
         # register the bases tensors as parameters of this module
         # self.register_buffer('sampled_basis', sampled_basis)
+        # print(" self.sampled_basis = sampled_basis")
         self.sampled_basis = sampled_basis
             
     def __call__(self, weights: Array) -> Array:
@@ -144,17 +151,17 @@ def block_basisexpansion(basis: KernelBasis,
 
     """
 
-    if basis_filter is not None:
-        mask = np.zeros(len(basis), dtype=bool)
-        for b, attr in enumerate(basis):
-            mask[b] = basis_filter(attr)
-    else:
-        mask = np.ones(len(basis), dtype=bool)
-
     if not recompute:
         # compute the mask of the sampled basis containing only the elements allowed by the filter
-        key = (basis, mask.tobytes(), points.tobytes())
+        # key = (basis, mask.tobytes(), points.tobytes())
+        key = (basis, basis_filter, points.tobytes())
         if key not in _stored_filters:
+            if basis_filter is not None:
+                mask = np.zeros(len(basis), dtype=bool)
+                for b, attr in enumerate(basis):
+                    mask[b] = basis_filter(attr)
+            else:
+                mask = np.ones(len(basis), dtype=bool)
             _stored_filters[key] = SingleBlockBasisExpansion(basis, points, mask)
 
         return _stored_filters[key]
@@ -198,12 +205,15 @@ def normalize_basis(basis: Array, sizes: Array) -> Array:
     # norms = norms.reshape(b, -1).sum(1)
     norms /= sizes
 
-    norms.at[norms < 1e-15].set(0)
+    # norms = norms.at[norms < 1e-15].set(0)
+    norms = jnp.where(norms < 1e-15, jnp.zeros_like(norms), norms)
     
     norms = jnp.sqrt(norms)
     
-    norms.at[norms < 1e-6].set(1)
-    norms.at[norms != norms].set(1)
+    # norms = norms.at[norms < 1e-6].set(1)
+    norms = jnp.where(norms < 1e-6, jnp.ones_like(norms), norms)
+    # norms = norms.at[norms != norms].set(1)
+    norms = jnp.where(norms != norms, jnp.ones_like(norms), norms)
     
     norms = norms.reshape(b, *([1] * (len(basis.shape) - 1)))
     

@@ -68,8 +68,8 @@ class SequentialModule(EquivariantModule):
                 assert isinstance(module, EquivariantModule)
                 self.add_module(str(idx), module)
         
-        # for i in range(1, len(self._modules.values())):
-        #     assert self._modules.values()[i-1].out_type == self._modules.values()[i].in_type
+        for i in range(1, len(self._modules.values())):
+            assert self._modules.values()[i-1].out_type == self._modules.values()[i].in_type
         
     def __call__(self, input: GeometricTensor) -> GeometricTensor:
         r"""

@@ -12,8 +12,6 @@ from escnn.group import *
 from escnn.gspaces import *
 from escnn.nn import *
 
-key = jax.random.PRNGKey(0)
-
 class TestConvolution(TestCase):
     
     # def test_cyclic(self):
@@ -65,6 +63,7 @@ class TestConvolution(TestCase):
 
         key, w_key, e_key = jax.random.split(key, 3)
         cl = Linear(r1, r2, use_bias=True, key=w_key)
+        raise
         for _ in range(8):
             key, w_key, e_key = jax.random.split(key, 3)
             # cl.weights = init.generalized_he_init(key, cl.weights, cl.basisexpansion)

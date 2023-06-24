@@ -21,9 +21,9 @@ __all__ = ["R2Conv"]
 
 
 class R2Conv(_RdConv):
-    _rings: List[float]
-    _sigma: Union[float, List[float]]
-    _maximum_frequency: int
+    _rings: List[float] = eqx.field(static=True)
+    _sigma: Union[float, List[float]] = eqx.field(static=True)
+    _maximum_frequency: int = eqx.field(static=True)
     
     def __init__(self,
                  in_type: FieldType,
@@ -190,7 +190,8 @@ class R2Conv(_RdConv):
         if initialize:
             # by default, the weights are initialized with a generalized form of He's weight initialization
             # escnn.nn.init.generalized_he_init(self.weights.data, self.basisexpansion)
-            self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
+            # self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
+            self.weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
 
     def _build_kernel_basis(self, in_repr: Representation, out_repr: Representation) -> KernelBasis:
         return self.space.build_kernel_basis(in_repr, out_repr, self._sigma, self._rings,
@@ -291,9 +292,8 @@ class R2Conv(_RdConv):
             return GeometricTensor(jnp.array(block_reduce(t.tensor, s, func=np.mean)), t.type)
         
         errors = []
-        
+
         for el in self.space.testing_elements:
-            
             out1 = np.array(self(shrink(x, (1, 1, 5, 5))).transform(el).tensor)
             out2 = np.array(self(shrink(x.transform(el), (1, 1, 5, 5))).tensor)
             

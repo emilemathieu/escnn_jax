@@ -182,6 +182,7 @@ class Representation:
         
         # np.ndarray: Change of basis matrix for the irreps decomposition.
         self.change_of_basis = change_of_basis
+        self.is_diagonal = np.allclose(change_of_basis, np.eye(change_of_basis.shape[0]))
 
         # np.ndarray: Inverse of the change of basis matrix for the irreps decomposition.
         self.change_of_basis_inv = change_of_basis_inv
