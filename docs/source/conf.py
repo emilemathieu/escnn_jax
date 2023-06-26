@@ -19,7 +19,7 @@ import sys
 sys.path.insert(0, os.path.abspath('../'))
 sys.path.insert(0, os.path.abspath('../../'))
 
-import escnn
+import escnn_jax
 
 
 
@@ -30,9 +30,9 @@ copyright = '2021, Qualcomm Innovation Center, Inc. Developed by Gabriele Cesa'
 author = 'Gabriele Cesa'
 
 # The short X.Y version
-version = escnn.__version__
+version = escnn_jax.__version__
 # The full version, including alpha/beta/rc tags
-release = escnn.__version__
+release = escnn_jax.__version__
 
 
 # -- General configuration ---------------------------------------------------

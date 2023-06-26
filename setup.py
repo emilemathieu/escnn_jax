@@ -5,13 +5,14 @@ with open("escnn/__about__.py") as fp:
     exec(fp.read(), about)
 
 install_requires = [
-    "torch>=1.3",
+    # "torch>=1.3",
+    "jax==0.4.12",
     "numpy",
     "scipy",
     "lie_learn",
     "joblib",
     "pymanopt",
-    "autograd",
+    # "autograd",
     "py3nj",
 ]
 
@@ -40,7 +41,8 @@ setup(
     packages=find_packages(exclude=["test", "test.*"]),
     python_requires=">=3.7",
     keywords=[
-        "pytorch",
+        "jax",
+        "equinox",
         "cnn",
         "convolutional-networks" "equivariant",
         "isometries",

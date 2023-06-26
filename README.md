@@ -1,7 +1,7 @@
 
 E(n)-equivariant Steerable CNNs (*escnn*)
 --------------------------------------------------------------------------------
-**[Documentation](https://quva-lab.github.io/escnn/)** | **[Paper ICLR 22](https://openreview.net/forum?id=WE4qe9xlnQw)** | **[Paper NeurIPS 19](https://arxiv.org/abs/1911.08251)** | **[escnn](<https://github.com/QUVA-Lab/escnn/>) library** | | **[e2cnn](<https://github.com/QUVA-Lab/e2cnn>) library** | **[e2cnn experiments](https://github.com/QUVA-Lab/e2cnn_experiments)** | **[Thesis](https://gabri95.github.io/Thesis/thesis.pdf)** 
+**[Documentation](https://quva-lab.github.io/escnn/)** | **[escnn](<https://github.com/QUVA-Lab/escnn/>) library** |
 
 *escnn_jax* is a [Jax](http://jax.readthedocs.io/) port of the [PyTorch](https://pytorch.org/) [*escnn* library](https://github.com/QUVA-Lab/escnn/) for equivariant deep learning.
 *escnn_jax* supports steerable CNNs equivariant to both 2D and 3D isometries, as well as equivariant MLPs.
@@ -27,16 +27,21 @@ The library is structured into four subpackages with different high-level featur
     - [ ] `model.ipynb`
     - [ ] `octahedral_cnn.ipynb`
 - [ ] mimic `requires_grad=false` for 'buffer' variables to avoid including them in `opt_state` and `grads`
+- [ ] enhance `model.eval()` behaviour; make `EquivariantModule.eval` recursively call submodules?
 - add common missing `escnn.nn.modules`
-    - [ ] `QuotientFourierELU`
+- [ ] speed up module's `__init__` e.g. `nn.Linear`
+    - [ ] `InnerBatchNorm`
+    - [x] `QuotientFourierELU`
     - [ ] `IIDBatchNorm1d`
     - [ ] `R3Conv`
     - [ ] `IIDBatchNorm3d`
     - [ ] `PointwiseAvgPoolAntialiased3D`
+    - [x] `NormNonLinearity`
+    - [x] `TensorProductModule`
 
 ### Nice to have
 - [ ] add support for [`haiku`](https://dm-haiku.readthedocs.io/en/latest/) / [`flax`](https://flax.readthedocs.io/en/latest/) under `escnn.nn.haiku` / `escnn.nn.flax`
-- [ ] `jaxlinop` for `Representation` class akin to [`emlp`](https://emlp.readthedocs.io)
+- [ ] `jaxlinop` for `Representation` class akin to [`emlp`](https://emlp.readthedocs.io), and more generally rewrite `escnn_jax.group` in `jax`?
 - [ ] init function `deltaorthonormal_init`
 - add missing `escnn.nn.modules`
     - [ ] `BranchingModule`
