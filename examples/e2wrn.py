@@ -5,9 +5,9 @@ import torch.nn.functional as F
 
 import math
 
-import escnn.nn as enn
-from escnn.nn import init
-from escnn import gspaces
+import escnn_jax.nn as enn
+from escnn_jax.nn import init
+from escnn_jax import gspaces
 
 from argparse import ArgumentParser
 

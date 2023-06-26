@@ -1,7 +1,7 @@
 import torch
 
-from escnn import gspaces
-from escnn import nn
+from escnn_jax import gspaces
+from escnn_jax import nn
 
 import numpy as np
 np.set_printoptions(precision=3, linewidth=10000, suppress=True)

@@ -2,9 +2,9 @@
 from typing import Tuple, Union
 from collections import defaultdict
 
-from escnn.group import *
-from escnn.gspaces import *
-from escnn.nn import *
+from escnn_jax.group import *
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
 
 
 import torch
