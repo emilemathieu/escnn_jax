@@ -1,7 +1,7 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import *
+from escnn_jax.group import *
 
 import numpy as np
 

@@ -1,20 +1,16 @@
 
-from typing import Callable, Dict, Iterable, List, Union
-
-import jax.numpy as jnp
-import numpy as np
-# import torch
-from jaxtyping import Array, PRNGKeyArray
-
-from escnn.kernels import EmptyBasisException, KernelBasis
-
+from escnn_jax.kernels import KernelBasis, EmptyBasisException
 from .basismanager import BasisManager
+
+from typing import Callable, Dict, List, Iterable, Union
+
+import torch
+import numpy as np
 
 __all__ = ["SingleBlockBasisExpansion", "block_basisexpansion"]
 
 
-# class SingleBlockBasisExpansion(torch.nn.Module, BasisManager):
-class SingleBlockBasisExpansion(BasisManager):
+class SingleBlockBasisExpansion(torch.nn.Module, BasisManager):
     
     def __init__(self,
                  basis: KernelBasis,
@@ -34,7 +30,6 @@ class SingleBlockBasisExpansion(BasisManager):
             
         """
 
-        # print("SingleBlockBasisExpansion")
         super(SingleBlockBasisExpansion, self).__init__()
 
         # This is a hack to prevent PyTorch to register basis as a submodule
@@ -61,38 +56,31 @@ class SingleBlockBasisExpansion(BasisManager):
         # sample the basis on the grid
         # basis has shape (p, k, o, i)
         # permute to (k, o, i, p)
-        # print("basis.sample BEG")
-        sampled_basis = basis.sample(jnp.array(
-            points, dtype=float
-        )).transpose(1, 2, 3, 0)
-        # print("basis.sample END")
-        # print("basis", sampled_basis.device())
+        sampled_basis = basis.sample(torch.tensor(
+            points, dtype=torch.float32
+        )).permute(1, 2, 3, 0)
 
         # normalize the basis
-        sizes = jnp.array(sizes, dtype=sampled_basis.dtype)
-        # print("normalize_basis BEG")
+        sizes = torch.tensor(sizes, dtype=sampled_basis.dtype)
         sampled_basis = normalize_basis(sampled_basis, sizes)
-        # print("normalize_basis END")
 
         # discard the basis which are close to zero everywhere
         norms = (sampled_basis ** 2).reshape(sampled_basis.shape[0], -1).sum(1) > 1e-2
-        mask = jnp.array(mask) & norms
+        mask = torch.tensor(mask) & norms
         if not mask.any():
             raise EmptyBasisException
         sampled_basis = sampled_basis[mask, ...]
         self._mask = mask
         
         # register the bases tensors as parameters of this module
-        # self.register_buffer('sampled_basis', sampled_basis)
-        # print(" self.sampled_basis = sampled_basis")
-        self.sampled_basis = sampled_basis
+        self.register_buffer('sampled_basis', sampled_basis)
             
-    def __call__(self, weights: Array) -> Array:
+    def forward(self, weights: torch.Tensor) -> torch.Tensor:
     
         assert len(weights.shape) == 2 and weights.shape[1] == self.dimension()
     
         # expand the current subset of basis vectors and set the result in the appropriate place in the filter
-        return jnp.einsum('boi...,kb->koi...', self.sampled_basis, weights)
+        return torch.einsum('boi...,kb->koi...', self.sampled_basis, weights)
 
     def get_element_info(self, id: int) -> Dict:
         idx = 0
@@ -119,7 +107,7 @@ class SingleBlockBasisExpansion(BasisManager):
         if isinstance(other, SingleBlockBasisExpansion):
             return (
                     self.basis == other.basis and
-                    jnp.allclose(self.sampled_basis, other.sampled_basis) and
+                    torch.allclose(self.sampled_basis, other.sampled_basis) and
                     (self._mask == other._mask).all()
             )
         else:
@@ -151,17 +139,17 @@ def block_basisexpansion(basis: KernelBasis,
 
     """
 
+    if basis_filter is not None:
+        mask = np.zeros(len(basis), dtype=bool)
+        for b, attr in enumerate(basis):
+            mask[b] = basis_filter(attr)
+    else:
+        mask = np.ones(len(basis), dtype=bool)
+
     if not recompute:
         # compute the mask of the sampled basis containing only the elements allowed by the filter
-        # key = (basis, mask.tobytes(), points.tobytes())
-        key = (basis, basis_filter, points.tobytes())
+        key = (basis, mask.tobytes(), points.tobytes())
         if key not in _stored_filters:
-            if basis_filter is not None:
-                mask = np.zeros(len(basis), dtype=bool)
-                for b, attr in enumerate(basis):
-                    mask[b] = basis_filter(attr)
-            else:
-                mask = np.ones(len(basis), dtype=bool)
             _stored_filters[key] = SingleBlockBasisExpansion(basis, points, mask)
 
         return _stored_filters[key]
@@ -170,7 +158,7 @@ def block_basisexpansion(basis: KernelBasis,
         return SingleBlockBasisExpansion(basis, points, mask)
 
 
-def normalize_basis(basis: Array, sizes: Array) -> Array:
+def normalize_basis(basis: torch.Tensor, sizes: torch.Tensor) -> torch.Tensor:
     r"""
 
     Normalize the filters in the input tensor.
@@ -194,28 +182,25 @@ def normalize_basis(basis: Array, sizes: Array) -> Array:
     assert sizes.shape == (b,), (sizes.shape, b, basis.shape)
     
     # compute the norm of each basis vector
-    norms = jnp.einsum('bop...,bpq...->boq...', basis, jnp.swapaxes(basis, 1, 2))
+    norms = torch.einsum('bop...,bpq...->boq...', (basis, basis.transpose(1, 2)))
     
     # Removing the change of basis, these matrices should be multiples of the identity
     # where the scalar on the diagonal is the variance
     # in order to find this variance, we can compute the trace (which is invariant to the change of basis)
     # and divide by the number of elements in the diagonal ignoring the padding.
     # Therefore, we need to know the original size of each basis element.
-    norms = jnp.einsum("bii...->b", norms)
+    norms = torch.einsum("bii...->b", norms)
     # norms = norms.reshape(b, -1).sum(1)
     norms /= sizes
 
-    # norms = norms.at[norms < 1e-15].set(0)
-    norms = jnp.where(norms < 1e-15, jnp.zeros_like(norms), norms)
+    norms[norms < 1e-15] = 0
     
-    norms = jnp.sqrt(norms)
+    norms = torch.sqrt(norms)
     
-    # norms = norms.at[norms < 1e-6].set(1)
-    norms = jnp.where(norms < 1e-6, jnp.ones_like(norms), norms)
-    # norms = norms.at[norms != norms].set(1)
-    norms = jnp.where(norms != norms, jnp.ones_like(norms), norms)
+    norms[norms < 1e-6] = 1
+    norms[norms != norms] = 1
     
-    norms = norms.reshape(b, *([1] * (len(basis.shape) - 1)))
+    norms = norms.view(b, *([1] * (len(basis.shape) - 1)))
     
     # divide by the norm
     basis /= norms

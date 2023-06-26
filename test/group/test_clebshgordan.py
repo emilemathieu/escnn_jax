@@ -1,8 +1,8 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import *
-import escnn.group
+from escnn_jax.group import *
+import escnn_jax.group
 
 import numpy as np
 from scipy import sparse
@@ -102,7 +102,7 @@ class TestGroups(TestCase):
                 n = (n,)
                 for j in range(3):
                     j = (j,)
-                    CG1 = escnn.group._clebsh_gordan._clebsh_gordan_tensor(m, n, j, G.__class__.__name__, **G._keys)
+                    CG1 = escnn_jax.group._clebsh_gordan._clebsh_gordan_tensor(m, n, j, G.__class__.__name__, **G._keys)
                     CG2 = G._clebsh_gordan_coeff(m, n, j)
 
                     # if not np.allclose(CG1, CG2, atol=1e-5):
@@ -128,7 +128,7 @@ class TestGroups(TestCase):
             for n in product(range(1), range(2)):
                 for j in product(range(1), range(3)):
                     print(m, n, j)
-                    CG1 = escnn.group._clebsh_gordan._clebsh_gordan_tensor(m, n, j, G.__class__.__name__, **G._keys)
+                    CG1 = escnn_jax.group._clebsh_gordan._clebsh_gordan_tensor(m, n, j, G.__class__.__name__, **G._keys)
                     CG2 = G._clebsh_gordan_coeff(m, n, j)
 
                     if not np.allclose(CG1, CG2, atol=1e-5):

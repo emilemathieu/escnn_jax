@@ -1,16 +1,13 @@
 
 
-from escnn.gspaces import *
-from escnn.nn import FieldType
-from escnn.nn import GeometricTensor
+from escnn_jax.gspaces import *
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
 
 from ..equivariant_module import EquivariantModule
 
-import equinox as eqx
-import jax
-import jax.numpy as jnp
-import numpy as np
-from jaxtyping import Array, PRNGKeyArray
+import torch.nn.functional as F
+import torch
 
 from typing import List, Tuple, Any, Union
 
@@ -25,10 +22,6 @@ __all__ = [
 
 
 class PointwiseAvgPool2D(EquivariantModule):
-    kernel_size: Union[int, Tuple[int, int]]
-    stride: Union[int, Tuple[int, int]] = None,
-    padding: Union[int, Tuple[int, int]] = 0,
-    ceil_mode: bool = False
     
     def __init__(self,
                  in_type: FieldType,
@@ -88,7 +81,7 @@ class PointwiseAvgPool2D(EquivariantModule):
             
         self.ceil_mode = ceil_mode
             
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
         
         Args:
@@ -137,10 +130,6 @@ class PointwiseAvgPool2D(EquivariantModule):
     
     
 class PointwiseAvgPoolAntialiased2D(EquivariantModule):
-    stride: Union[int, Tuple[int, int]] = eqx.field(static=True)
-    padding: Union[int, Tuple[int, int]] = eqx.field(static=True)
-    kernel_size: Union[int, Tuple[int, int]] = eqx.field(static=True)
-    filter: Array
     
     def __init__(self,
                  in_type: FieldType,
@@ -200,31 +189,30 @@ class PointwiseAvgPoolAntialiased2D(EquivariantModule):
 
         # Build the Gaussian smoothing filter
 
-        grid_x = jnp.arange(filter_size).repeat(filter_size).reshape(filter_size, filter_size)
-        grid_y = grid_x.T
-        grid = jnp.stack([grid_x, grid_y], axis=-1)
+        grid_x = torch.arange(filter_size).repeat(filter_size).view(filter_size, filter_size)
+        grid_y = grid_x.t()
+        grid = torch.stack([grid_x, grid_y], dim=-1)
 
         mean = (filter_size - 1) / 2.
         variance = sigma ** 2.
 
         # setting the dtype is needed, otherwise it becomes an integer tensor
-        r = -jnp.sum((grid - mean) ** 2., axis=-1, dtype=float)#, dtype=torch.get_default_dtype())
+        r = -torch.sum((grid - mean) ** 2., dim=-1, dtype=torch.get_default_dtype())
 
         # Build the gaussian kernel
-        _filter = jnp.exp(r / (2 * variance))
+        _filter = torch.exp(r / (2 * variance))
 
         # Normalize
-        _filter /= jnp.sum(_filter)
+        _filter /= torch.sum(_filter)
 
         # The filter needs to be reshaped to be used in 2d depthwise convolution
-        # _filter = _filter.view(1, 1, filter_size, filter_size).repeat((in_type.size, 1, 1, 1))
-        _filter = _filter.reshape(1, 1, filter_size, filter_size).repeat(in_type.size, 0)
+        _filter = _filter.view(1, 1, filter_size, filter_size).repeat((in_type.size, 1, 1, 1))
 
         self.register_buffer('filter', _filter)
         
         ################################################################################################################
     
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
 
         Args:
@@ -237,14 +225,7 @@ class PointwiseAvgPoolAntialiased2D(EquivariantModule):
         
         assert input.type == self.in_type
         
-        # output = F.conv2d(input.tensor, self.filter, stride=self.stride, padding=self.padding, groups=input.shape[1])
-        output = jax.lax.conv_general_dilated(
-                lhs=input.tensor,
-                rhs=self.filter,
-                window_strides=self.stride,
-                padding=(self.padding, self.padding),
-                feature_group_count=input.shape[1],
-            )
+        output = F.conv2d(input.tensor, self.filter, stride=self.stride, padding=self.padding, groups=input.shape[1])
         
         # wrap the result in a GeometricTensor
         return GeometricTensor(output, self.out_type, coords=None)
@@ -264,7 +245,7 @@ class PointwiseAvgPoolAntialiased2D(EquivariantModule):
     
         return b, self.out_type.size, ho, wo
 
-    def check_equivariance(self, key, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
     
         # this kind of pooling is not really equivariant so we can't test equivariance
         pass

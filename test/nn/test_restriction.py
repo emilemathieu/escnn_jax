@@ -1,8 +1,8 @@
 import unittest
 from unittest import TestCase
 
-from escnn.gspaces import *
-from escnn.nn import *
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
 
 
 class TestRestriction(TestCase):

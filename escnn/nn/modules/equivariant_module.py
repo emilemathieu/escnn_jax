@@ -1,24 +1,20 @@
 
-from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Tuple
+from escnn_jax.nn import GeometricTensor
+from escnn_jax.nn import FieldType
 
-import equinox as eqx
-import jax
-import jax.numpy as jnp
+from torch.nn import Module
+
+import torch
 import numpy as np
-from jaxtyping import PRNGKeyArray
 
-from escnn.gspaces import GSpace, GSpace0D
-from escnn.nn import FieldType, GeometricTensor
+from abc import ABC, abstractmethod
+
+from typing import List, Tuple, Any
 
 __all__ = ["EquivariantModule"]
 
 
-class EquivariantModule(eqx.Module, ABC):
-    in_type: FieldType = eqx.field(static=True)
-    out_type: FieldType = eqx.field(static=True)
-    space: GSpace = eqx.field(static=True)
-
+class EquivariantModule(Module, ABC):
 
     def __init__(self):
         r"""
@@ -61,22 +57,8 @@ class EquivariantModule(eqx.Module, ABC):
         # FieldType: type of the :class:`~escnn.nn.GeometricTensor` returned as output
         self.out_type = None
 
-        self.space = None
-
-    def register_buffer(self, key, value):
-        setattr(self, key, value)
-
-    def eval(self):
-        return self.train(False)
-    
-    def train(self, mode=True):
-        if not mode:
-            return eqx.tree_inference(self, True)
-        else:
-            return eqx.tree_inference(self, False)
-
     @abstractmethod
-    def __call__(self, *input):
+    def forward(self, *input):
         pass
     
     @abstractmethod
@@ -94,7 +76,7 @@ class EquivariantModule(eqx.Module, ABC):
         """
         pass
     
-    def check_equivariance(self, key, atol: float = 1e-7, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-7, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
         r"""
         
         Method that automatically tests the equivariance of the current module.
@@ -111,8 +93,7 @@ class EquivariantModule(eqx.Module, ABC):
     
         c = self.in_type.size
     
-        # x = torch.randn(3, c, *[10]*self.in_type.gspace.dimensionality)
-        x = jax.random.normal(key, (3, c, *[10]*self.in_type.gspace.dimensionality))
+        x = torch.randn(3, c, *[10]*self.in_type.gspace.dimensionality)
     
         x = GeometricTensor(x, self.in_type)
         
@@ -123,8 +104,8 @@ class EquivariantModule(eqx.Module, ABC):
             el = self.in_type.gspace.fibergroup.sample()
             print(el)
             
-            out1 = np.array(self(x).transform_fibers(el).tensor)
-            out2 = np.array(self(x.transform_fibers(el)).tensor)
+            out1 = self(x).transform(el).tensor.detach().numpy()
+            out2 = self(x.transform(el)).tensor.detach().numpy()
         
             errs = out1 - out2
             errs = np.abs(errs).reshape(-1)

@@ -1,46 +1,29 @@
 
-import math
 from abc import ABC, abstractmethod
-from typing import Callable, List, Optional, Tuple, Union
 
-import equinox as eqx
-import jax
-import jax.numpy as jnp
-# import torch
-# from torch.nn import Parameter
-import numpy as np
-from jaxtyping import Array, PRNGKeyArray
-
-from escnn.group import Representation
-from escnn.gspaces import *
-from escnn.kernels import KernelBasis
-from escnn.nn import FieldType, GeometricTensor
-from escnn.nn.modules.basismanager import BasisManager, BlocksBasisExpansion
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
+from escnn_jax.group import Representation
+from escnn_jax.kernels import KernelBasis
+from escnn_jax.gspaces import *
 
 from ..equivariant_module import EquivariantModule
+
+from escnn_jax.nn.modules.basismanager import BasisManager
+from escnn_jax.nn.modules.basismanager import BlocksBasisExpansion
+
+from typing import Callable, Union, Tuple, List
+
+import torch
+from torch.nn import Parameter
+import numpy as np
+import math
+
 
 __all__ = ["_RdConv"]
 
 
 class _RdConv(EquivariantModule, ABC):
-    d: int = eqx.field(static=True)
-    kernel_size: int = eqx.field(static=True)
-    stride: int = eqx.field(static=True)
-    dilation: int = eqx.field(static=True)
-    padding: int = eqx.field(static=True)
-    padding_mode: str = eqx.field(static=True)
-    groups: int = eqx.field(static=True)
-    _reversed_padding_repeated_twice: List[int] = eqx.field(static=True)
-    use_bias: bool = eqx.field(static=True)
-
-    _basisexpansion: Optional[BlocksBasisExpansion] = eqx.field(static=True)
-    bias: Optional[Array]
-    filter: Array
-    weights: Array
-    bias_expansion: Array
-    expanded_bias: Array
-
-    inference: bool
     
     def __init__(self,
                  in_type: FieldType,
@@ -52,10 +35,9 @@ class _RdConv(EquivariantModule, ABC):
                  dilation: int = 1,
                  padding_mode: str = 'zeros',
                  groups: int = 1,
-                 use_bias: bool = True,
+                 bias: bool = True,
                  basis_filter: Callable[[dict], bool] = None,
                  recompute: bool = False,
-                 inference: bool = False,
                  ):
         r"""
 
@@ -148,24 +130,16 @@ class _RdConv(EquivariantModule, ABC):
         assert d >= in_type.gspace.dimensionality
 
         super(_RdConv, self).__init__()
-        self.inference = inference
-        self.use_bias = use_bias
 
         self.d = d
         self.space = in_type.gspace
         self.in_type = in_type
         self.out_type = out_type
         
-        parse = eqx.nn._conv._ntuple(d)
-        self.kernel_size = parse(kernel_size)
-        self.stride = parse(stride)
-        self.dilation = parse(dilation)
-        self.padding = tuple((padding, padding) for _ in range(d))
-
-        # self.kernel_size = kernel_size
-        # self.stride = stride
-        # self.dilation = dilation
-        # self.padding = padding
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.dilation = dilation
+        self.padding = padding
         self.padding_mode = padding_mode
         self.groups = groups
 
@@ -200,7 +174,7 @@ class _RdConv(EquivariantModule, ABC):
             # different filters, each mapping an input group to an output group.
             in_type = in_type.index_select(list(range(in_size)))
         
-        if use_bias:
+        if bias:
             # bias can be applied only to trivial irreps inside the representation
             # to apply bias to a field we learn a bias for each trivial irreps it contains
             # and, then, we transform it with the change of basis matrix to be able to apply it to the whole field
@@ -220,7 +194,7 @@ class _RdConv(EquivariantModule, ABC):
                 # matrix containing the columns of the change of basis which map from the trivial irreps to the
                 # field representations. This matrix allows us to map the bias defined only over the trivial irreps
                 # to a bias for the whole field more efficiently
-                bias_expansion = jnp.zeros((self.out_type.size, trivials))
+                bias_expansion = torch.zeros(self.out_type.size, trivials)
                 
                 p, c = 0, 0
                 for r in self.out_type:
@@ -228,25 +202,20 @@ class _RdConv(EquivariantModule, ABC):
                     for irr in r.irreps:
                         irr = self.out_type.fibergroup.irrep(*irr)
                         if irr.is_trivial():
-                            bias_expansion = bias_expansion.at[p:p+r.size, c].set(r.change_of_basis[:, pi])
+                            bias_expansion[p:p+r.size, c] = torch.tensor(r.change_of_basis[:, pi])
                             c += 1
                         pi += irr.size
                     p += r.size
                 
-                # self.register_buffer("bias_expansion", bias_expansion)
-                # self.bias = Parameter(torch.zeros(trivials), requires_grad=True)
-                # self.register_buffer("expanded_bias", torch.zeros(out_type.size))
-                setattr(self, "bias_expansion", bias_expansion)
-                self.bias = jnp.zeros((trivials))
-                setattr(self, "expanded_bias", jnp.zeros((out_type.size)))
+                self.register_buffer("bias_expansion", bias_expansion)
+                self.bias = Parameter(torch.zeros(trivials), requires_grad=True)
+                self.register_buffer("expanded_bias", torch.zeros(out_type.size))
             else:
                 self.bias = None
                 self.expanded_bias = None
-                self.bias_expansion = None
         else:
             self.bias = None
             self.expanded_bias = None
-            self.bias_expansion = None
 
         # compute the coordinates of the centers of the cells in the grid where the filter is sampled
         grid = get_grid_coords(d, kernel_size, dilation)
@@ -267,12 +236,10 @@ class _RdConv(EquivariantModule, ABC):
                 for a larger basis.
             ''')
         
-        # self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
-        # self.weights = jnp.zeros(self.basisexpansion.dimension())
+        self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
         
         filter_size = (out_type.size, in_type.size) + (kernel_size,) * d
-        # self.register_buffer("filter", torch.zeros(*filter_size))
-        setattr(self, "filter", jnp.zeros(filter_size))
+        self.register_buffer("filter", torch.zeros(*filter_size))
     
     @abstractmethod
     def _build_kernel_basis(self, in_repr: Representation, out_repr: Representation) -> KernelBasis:
@@ -292,7 +259,7 @@ class _RdConv(EquivariantModule, ABC):
         """
         return self._basisexpansion
     
-    def expand_parameters(self) -> Tuple[Array, Array]:
+    def expand_parameters(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
         
         Expand the filter in terms of the :attr:`~escnn.nn._RdConv.weights` and the
@@ -303,8 +270,7 @@ class _RdConv(EquivariantModule, ABC):
 
         """
         _filter = self.basisexpansion(self.weights)
-        # _filter = _filter.reshape(_filter.shape[0], _filter.shape[1], *(self.kernel_size,)*self.d)
-        _filter = _filter.reshape(_filter.shape[0], _filter.shape[1], *self.kernel_size)
+        _filter = _filter.reshape(_filter.shape[0], _filter.shape[1], *(self.kernel_size,)*self.d)
         
         if self.bias is None:
             _bias = None
@@ -313,7 +279,8 @@ class _RdConv(EquivariantModule, ABC):
             
         return _filter, _bias
     
-    def __call__(self, input: GeometricTensor):
+    @abstractmethod
+    def forward(self, input: GeometricTensor):
         r"""
         Convolve the input with the expanded filter and bias.
         
@@ -324,40 +291,7 @@ class _RdConv(EquivariantModule, ABC):
             output feature field transforming according to ``out_type``
             
         """
-        assert input.type == self.in_type
-        
-        # if not self.training:
-        if self.inference:
-            _filter = self.filter
-            _bias = self.expanded_bias
-        else:
-            # retrieve the filter and the bias
-            _filter, _bias = self.expand_parameters()
-        # use it for convolution and return the result
-
-
-        if self.padding_mode == 'zeros':
-            output = jax.lax.conv_general_dilated(
-                lhs=input.tensor,
-                rhs=_filter,
-                window_strides=self.stride,
-                padding=self.padding,
-                rhs_dilation=self.dilation,
-                feature_group_count=self.groups,
-            )
-            if self.use_bias:
-                _bias = jnp.expand_dims(_bias, axis=tuple(range(-1, -(self.d + 1), -1)))
-                output = jax.vmap(lambda x: x + _bias)(output)
-        else:
-            raise NotImplementedError()
-            # output = conv2d(pad(input.tensor, self._reversed_padding_repeated_twice, self.padding_mode),
-            #                 _filter,
-            #                 stride=self.stride,
-            #                 dilation=self.dilation,
-            #                 groups=self.groups,
-            #                 bias=_bias)
-        
-        return GeometricTensor(output, self.out_type, coords=None)
+        pass
         
     def train(self, mode=True):
         r"""
@@ -382,30 +316,24 @@ class _RdConv(EquivariantModule, ABC):
 
         """
 
-        if not mode:
-            # # TODO thoroughly check this is not causing problems
-            # if hasattr(self, "filter"):
-            #     del self.filter
-            # if hasattr(self, "expanded_bias"):
-            #     del self.expanded_bias
-            _filter, _bias = self.expand_parameters()
-            new = eqx.tree_at(lambda m: m.filter, self, replace=_filter)
-            if _bias is not None:
-                new = eqx.tree_at(lambda m: m.expanded_bias, new, replace=_bias)
-        
-        # elif self.training:
-        else:
+        if mode:
+            # TODO thoroughly check this is not causing problems
+            if hasattr(self, "filter"):
+                del self.filter
+            if hasattr(self, "expanded_bias"):
+                del self.expanded_bias
+        elif self.training:
             # avoid re-computation of the filter and the bias on multiple consecutive calls of `.eval()`
     
-            new = eqx.tree_at(lambda m: m.filter, self, replace=None)
-            new = eqx.tree_at(lambda m: m.expanded_bias, new, replace=None)
-            # self.register_buffer("filter", _filter)
-            # if _bias is not None:
-            #     self.register_buffer("expanded_bias", _bias)
-            # else:
-            #     self.expanded_bias = None
+            _filter, _bias = self.expand_parameters()
+    
+            self.register_buffer("filter", _filter)
+            if _bias is not None:
+                self.register_buffer("expanded_bias", _bias)
+            else:
+                self.expanded_bias = None
 
-        return super(_RdConv, new).train(mode)
+        return super(_RdConv, self).train(mode)
 
     def evaluate_output_shape(self, input_shape: Tuple) -> Tuple:
         assert len(input_shape) == 2 + self.d
@@ -416,7 +344,7 @@ class _RdConv(EquivariantModule, ABC):
         
         wo = [None]*self.d
         for i in range(self.d):
-            wo[i] = math.floor((w[i] + 2 * self.padding[0] - self.dilation[0] * (self.kernel_size[0] - 1) - 1) / self.stride[0] + 1)
+            wo[i] = math.floor((w[i] + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) / self.stride + 1)
 
         return (b, self.out_type.size) + tuple(wo)
 
@@ -426,8 +354,7 @@ class _RdConv(EquivariantModule, ABC):
         if extra_repr:
             extra_lines = extra_repr.split('\n')
 
-        # main_str = self._get_name() + '('
-        main_str = '('
+        main_str = self._get_name() + '('
         if len(extra_lines) == 1:
             main_str += extra_lines[0]
         else:

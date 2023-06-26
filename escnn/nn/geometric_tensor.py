@@ -3,10 +3,10 @@ import itertools
 from collections.abc import Iterable
 from typing import List, Union
 
-import jax.numpy as jnp
-from jaxtyping import Array
+import torch
+from torch import Tensor
 
-from escnn.group import GroupElement
+from escnn_jax.group import GroupElement
 
 from .field_type import FieldType
 
@@ -15,7 +15,7 @@ __all__ = ["GeometricTensor", "tensor_directsum"]
 
 class GeometricTensor:
     
-    def __init__(self, tensor: Array, type: FieldType, coords: Array = None):
+    def __init__(self, tensor: Tensor, type: FieldType, coords: Tensor = None):
         r"""
 
         A GeometricTensor can be interpreted as a *typed* tensor.
@@ -221,7 +221,7 @@ class GeometricTensor:
             ~.coords (torch.Tensor)
 
         """
-        assert isinstance(tensor, Array)
+        assert isinstance(tensor, torch.Tensor)
         assert isinstance(type, FieldType)
         
         if coords is None:
@@ -458,7 +458,7 @@ class GeometricTensor:
             :meth:`torch.Tensor.size`
 
         """
-        return self.tensor.shape
+        return self.tensor.size()
 
     def to(self, *args, **kwargs):
         r"""
@@ -514,9 +514,9 @@ class GeometricTensor:
         for i, idx in enumerate(slices):
             if (isinstance(idx, slice) or isinstance(idx, int) or idx == Ellipsis):
                 continue
-            elif isinstance(idx, Array) and idx.dtype == jnp.bool_:
+            elif isinstance(idx, torch.Tensor) and idx.dtype == torch.bool:
                 continue
-            elif isinstance(idx, Array) and idx.dtype == jnp.int64:
+            elif isinstance(idx, torch.Tensor) and idx.dtype == torch.long:
                 continue
             else:
                 raise TypeError(f'''
@@ -606,10 +606,10 @@ class GeometricTensor:
             elif isinstance(expanded_idxs[1], int):
                 fields = [expanded_idxs[1]]
                 representations = self.type.representations[expanded_idxs[1]]
-            elif isinstance(expanded_idxs[1], Array) and expanded_idxs[1].dtype == jnp.bool_:
+            elif isinstance(expanded_idxs[1], torch.Tensor) and expanded_idxs[1].dtype == torch.bool:
                 fields = [i for i in range(len(self.type)) if expanded_idxs[1][i]]
                 representations = [self.type.representations[f] for f in fields]
-            elif isinstance(expanded_idxs[1], Array) and expanded_idxs[1].dtype == jnp.int64:
+            elif isinstance(expanded_idxs[1], torch.Tensor) and expanded_idxs[1].dtype == torch.long:
                 fields = expanded_idxs[1].tolist()
                 representations = [self.type.representations[f] for f in fields]
             elif isinstance(expanded_idxs[1], Iterable):
@@ -655,7 +655,7 @@ class GeometricTensor:
         if (self.coords is None) != (other.coords is None):
             return False
         elif self.coords is not None:
-            return jnp.allclose(self.coords, other.coords)
+            return torch.allclose(self.coords, other.coords)
         return True
 
     def is_compatible(self, other: 'GeometricTensor') -> bool:
@@ -737,7 +737,7 @@ class GeometricTensor:
         else:
             return NotImplemented
 
-    def __mul__(self, other: Union[float, Array]) -> 'GeometricTensor':
+    def __mul__(self, other: Union[float, torch.Tensor]) -> 'GeometricTensor':
         r"""
         Scalar product of this :class:`~escnn.nn.GeometricTensor` with a scalar.
         
@@ -751,7 +751,7 @@ class GeometricTensor:
             the scalar product
 
         """
-        if isinstance(other, float) or (isinstance(other, Array) and other.size == 1):
+        if isinstance(other, float) or (isinstance(other, torch.Tensor) and other.numel() == 1):
             # Only multiplication with a scalar is allowed
             return GeometricTensor(self.tensor * other, self.type, self.coords)
         else:
@@ -759,7 +759,7 @@ class GeometricTensor:
 
     __rmul__ = __mul__
 
-    def __imul__(self, other: Union[float, Array]) -> 'GeometricTensor':
+    def __imul__(self, other: Union[float, torch.Tensor]) -> 'GeometricTensor':
         r"""
         Scalar product of this :class:`~escnn.nn.GeometricTensor` with a scalar.
         The operation is done inplace.
@@ -774,7 +774,7 @@ class GeometricTensor:
             the scalar product
 
         """
-        if isinstance(other, float) or (isinstance(other, Array) and other.size == 1):
+        if isinstance(other, float) or (isinstance(other, torch.Tensor) and other.numel() == 1):
             self.tensor *= other
             return self
         else:
@@ -811,11 +811,6 @@ class GeometricTensor:
 
         return r
 
-    @property
-    def dtype(self):
-        r"""dtype. Equivalent to ``self.array.dtype``."""
-        return self.tensor.dtype
-
 
 def tensor_directsum(tensors: List['GeometricTensor']) -> 'GeometricTensor':
     r"""
@@ -842,7 +837,7 @@ def tensor_directsum(tensors: List['GeometricTensor']) -> 'GeometricTensor':
     
     for i in range(1, len(tensors)):
         assert tensors[0].type.gspace == tensors[i].type.gspace
-        assert tensors[0].tensor.ndim == tensors[i].tensor.ndim
+        assert tensors[0].tensor.ndimension() == tensors[i].tensor.ndimension()
         assert tensors[0].tensor.shape[0] == tensors[i].tensor.shape[0]
         assert tensors[0].tensor.shape[2:] == tensors[i].tensor.shape[2:]
         assert tensors[0].has_same_coords(tensors[i])
@@ -856,7 +851,7 @@ def tensor_directsum(tensors: List['GeometricTensor']) -> 'GeometricTensor':
     cls = FieldType(tensors[0].type.gspace, reprs)
     
     # concatenate the underlying tensors
-    data = jnp.concatenate([t.tensor for t in tensors], axis=1)
+    data = torch.cat([t.tensor for t in tensors], dim=1)
     
     # build the new Geometric Tensor
     return GeometricTensor(data, cls, tensors[0].coords)

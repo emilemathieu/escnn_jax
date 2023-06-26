@@ -1,15 +1,12 @@
 
 
-import math
+from escnn_jax.nn.modules.basismanager import BasisManager
+
 from collections import defaultdict
 
-# import torch
-import jax
-import jax.numpy as jnp
-from jaxtyping import Array, Bool, Float
+import torch
 from scipy import stats
-
-from escnn.nn.modules.basismanager import BasisManager
+import math
 
 __all__ = ["generalized_he_init", "deltaorthonormal_init"]
 
@@ -26,8 +23,7 @@ def _generalized_he_init_variances(basismanager: BasisManager):
 
     """
 
-    # vars = jnp.ones((basismanager.dimension(),))
-    vars = []
+    vars = torch.ones((basismanager.dimension(),))
 
     inputs_count = defaultdict(lambda: set())
     basis_count = defaultdict(int)
@@ -46,17 +42,14 @@ def _generalized_he_init_variances(basismanager: BasisManager):
     for w, attr in enumerate(basis_info):
         i, o = attr["in_irreps_position"], attr["out_irreps_position"]
         in_irrep, out_irrep = attr["in_irrep"], attr["out_irrep"]
-        # vars = vars.at[w].set(1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)]))
-        vars.append(1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)]))
-    vars = jnp.array(vars)
+        vars[w] = 1. / math.sqrt(inputs_count[o] * basis_count[(in_irrep, o)])
 
     return vars
 
 
 cached_he_vars = {}
 
-# def generalized_he_init(key, tensor: Array, basismanager: BasisManager, cache: bool = False):
-def generalized_he_init(key, shape, basismanager: BasisManager, cache: bool = False):
+def generalized_he_init(tensor: torch.Tensor, basismanager: BasisManager, cache: bool = False):
     r"""
     
     Initialize the weights of a convolutional layer with a generalized He's weight initialization method.
@@ -78,8 +71,7 @@ def generalized_he_init(key, shape, basismanager: BasisManager, cache: bool = Fa
     """
     # Initialization
     
-    # assert tensor.shape == (basismanager.dimension(), )
-    assert shape == (basismanager.dimension(), )
+    assert tensor.shape == (basismanager.dimension(), )
 
     if cache and basismanager not in cached_he_vars:
         cached_he_vars[basismanager] = _generalized_he_init_variances(basismanager)
@@ -89,11 +81,10 @@ def generalized_he_init(key, shape, basismanager: BasisManager, cache: bool = Fa
     else:
         vars = _generalized_he_init_variances(basismanager)
 
-    # tensor[:] = vars.to(device=tensor.device) * torch.randn_like(tensor)
-    return vars * jax.random.normal(key, shape)
+    tensor[:] = vars.to(device=tensor.device) * torch.randn_like(tensor)
 
 
-def deltaorthonormal_init(key, tensor: Array, basismanager: BasisManager):
+def deltaorthonormal_init(tensor: torch.Tensor, basismanager: BasisManager):
     r"""
     
     Initialize the weights of a convolutional layer with *delta-orthogonal* initialization.
@@ -110,8 +101,7 @@ def deltaorthonormal_init(key, tensor: Array, basismanager: BasisManager):
 
     assert tensor.shape == (basismanager.dimension(), )
     
-    # tensor.fill_(0.)
-    tensor = jnp.full(tensor.shape, 0.)
+    tensor.fill_(0.)
     
     counts = defaultdict(lambda: defaultdict(lambda: []))
     
@@ -158,12 +148,10 @@ def deltaorthonormal_init(key, tensor: Array, basismanager: BasisManager):
             W = stats.ortho_group.rvs(max(i, o))[:o, :i]
             # W = np.eye(o, i)
         else:
-            # W = 2 * torch.randint(0, 1, size=(1, 1)) - 1
-            W = 2 * jax.random.randint(key, (1, 1), 0, 1) - 1
+            W = 2 * torch.randint(0, 1, size=(1, 1)) - 1
             # W = np.array([[1]])
         
-        # w = torch.randn((o, s))
-        w = jax.random.normal(key, (o, s))
+        w = torch.randn((o, s))
         # w = torch.ones((o, s))
         w *= 5.
         w /= (w ** 2).sum(dim=1, keepdim=True).sqrt()
@@ -172,5 +160,4 @@ def deltaorthonormal_init(key, tensor: Array, basismanager: BasisManager):
             for o, op in enumerate(out_c.keys()):
                 for p, pp in enumerate(count[(ip, op)]):
                     tensor[pp] = w[o, p] * W[o, i]
-        return tensor
 

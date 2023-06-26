@@ -1,8 +1,8 @@
 from unittest import TestCase
 import unittest
 
-from escnn.nn import *
-from escnn.gspaces import *
+from escnn_jax.nn import *
+from escnn_jax.gspaces import *
 
 import torch
 

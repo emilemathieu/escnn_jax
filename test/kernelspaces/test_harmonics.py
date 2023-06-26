@@ -1,7 +1,7 @@
 import unittest
 from unittest import TestCase
 
-from escnn.kernels import HarmonicPolynomialR3Generator
+from escnn_jax.kernels import HarmonicPolynomialR3Generator
 
 import torch
 import numpy as np

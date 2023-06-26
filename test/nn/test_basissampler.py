@@ -3,9 +3,9 @@ from unittest import TestCase
 
 import numpy as np
 
-from escnn.gspaces import *
-from escnn.nn import *
-from escnn.nn.modules.basismanager import BlocksBasisSampler
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
+from escnn_jax.nn.modules.basismanager import BlocksBasisSampler
 
 import torch
 

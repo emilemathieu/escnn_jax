@@ -1,10 +1,10 @@
 import unittest
 from unittest import TestCase
 
-from escnn.gspaces import *
-from escnn.group import *
-from escnn.nn import *
-from escnn.nn.modules.basismanager import BlocksBasisExpansion
+from escnn_jax.gspaces import *
+from escnn_jax.group import *
+from escnn_jax.nn import *
+from escnn_jax.nn.modules.basismanager import BlocksBasisExpansion
 
 import torch
 

@@ -8,10 +8,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import escnn.nn.init as init
-from escnn.gspaces import *
-from escnn.nn import *
-from escnn.nn.modules.conv import R2Conv
+import escnn_jax.nn.init as init
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
+from escnn_jax.nn.modules.conv import R2Conv
 
 
 class TestConvolution(TestCase):

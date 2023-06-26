@@ -1,8 +1,8 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import *
-from escnn.group._numerical import decompose_representation_general
+from escnn_jax.group import *
+from escnn_jax.group._numerical import decompose_representation_general
 
 import numpy as np
 

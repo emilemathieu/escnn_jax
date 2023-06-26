@@ -1,10 +1,10 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import *
-from escnn.gspaces import *
-from escnn.nn import *
-from escnn.nn.modules.pointconv.rd_point_convolution import _RdPointConv
+from escnn_jax.group import *
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
+from escnn_jax.nn.modules.pointconv.rd_point_convolution import _RdPointConv
 
 import torch
 

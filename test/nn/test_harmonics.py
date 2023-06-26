@@ -1,8 +1,8 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import *
-from escnn.nn import HarmonicPolynomialR3
+from escnn_jax.group import *
+from escnn_jax.nn import HarmonicPolynomialR3
 
 
 class TestHarmonicPolynomialsR3(TestCase):

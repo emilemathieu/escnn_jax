@@ -423,7 +423,7 @@ from joblib import Memory
 # cache_cube_sphere = Memory(os.path.join(os.path.dirname(__file__), '_jl_thomson_cube_sphere'), verbose=2)
 # cache_cube_so3 = Memory(os.path.join(os.path.dirname(__file__), '_jl_thomson_cube_so3'), verbose=2)
 
-from escnn.group import __cache_path__
+from escnn_jax.group import __cache_path__
 cache = Memory(__cache_path__, verbose=0)
 
 

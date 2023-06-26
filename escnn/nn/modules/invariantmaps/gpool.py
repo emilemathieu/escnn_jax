@@ -1,18 +1,15 @@
 
-from escnn.gspaces import *
-from escnn.nn import FieldType
-from escnn.nn import GeometricTensor
+from escnn_jax.gspaces import *
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
 
-from escnn.nn.modules.equivariant_module import EquivariantModule
-from escnn.nn.modules.utils import indexes_from_labels
+from escnn_jax.nn.modules.equivariant_module import EquivariantModule
+from escnn_jax.nn.modules.utils import indexes_from_labels
 
-import equinox as eqx
-import jax
-import jax.numpy as jnp
-import numpy as np
-from jaxtyping import Array, PRNGKeyArray
+import torch
+from torch import nn
 
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any
 from collections import defaultdict
 import numpy as np
 
@@ -21,9 +18,6 @@ __all__ = ["GroupPooling", "MaxPoolChannels"]
 
 
 class GroupPooling(EquivariantModule):
-    in_indices: Dict[int, Array] = eqx.field(static=True)
-    out_indices: Dict[int, Array] = eqx.field(static=True)
-    _contiguous: Dict[int, bool] = eqx.field(static=True)
     
     def __init__(self, in_type: FieldType, **kwargs):
         r"""
@@ -69,27 +63,23 @@ class GroupPooling(EquivariantModule):
         #   - check if fields of the same size are contiguous
         #   - retrieve the indices of the fields
         indeces = indexes_from_labels(in_type, [r.size for r in in_type.representations])
-        self.in_indices = {}
-        self.out_indices = {}
 
         for s, (contiguous, fields, idxs) in indeces.items():
             self._contiguous[s] = contiguous
-            # if contiguous:
-            #     # for contiguous fields, only the first and last indices are kept
-            #     _in_indices[s] = jnp.array([min(idxs), max(idxs)+1], dtype=int)
-            #     _out_indices[s] = jnp.array([min(fields), max(fields)+1], dtype=int)
-            # else:
-            #     # otherwise, transform the list of indices into a tensor
-            _in_indices[s] = jnp.array(idxs, dtype=int)
-            _out_indices[s] = jnp.array(fields, dtype=int)
+            if contiguous:
+                # for contiguous fields, only the first and last indices are kept
+                _in_indices[s] = torch.LongTensor([min(idxs), max(idxs)+1])
+                _out_indices[s] = torch.LongTensor([min(fields), max(fields)+1])
+            else:
+                # otherwise, transform the list of indices into a tensor
+                _in_indices[s] = torch.LongTensor(idxs)
+                _out_indices[s] = torch.LongTensor(fields)
         
             # register the indices tensors as parameters of this module
-            # self.register_buffer('in_indices_{}'.format(s), _in_indices[s])
-            # self.register_buffer('out_indices_{}'.format(s), _out_indices[s])
-            self.in_indices[s] = _in_indices[s]
-            self.out_indices[s] = _out_indices[s]
+            self.register_buffer('in_indices_{}'.format(s), _in_indices[s])
+            self.register_buffer('out_indices_{}'.format(s), _out_indices[s])
 
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
         
         Apply Group Pooling to the input feature map.
@@ -109,32 +99,27 @@ class GroupPooling(EquivariantModule):
         b, c = input.shape[:2]
         spatial_shape = input.shape[2:]
 
-        # output = torch.empty(self.evaluate_output_shape(input.shape), device=input.device, dtype=torch.float)
-        output = jnp.empty(self.evaluate_output_shape(input.shape), dtype=float) # device=input.device,
+        output = torch.empty(self.evaluate_output_shape(input.shape), device=input.device, dtype=torch.float)
         
         for s, contiguous in self._contiguous.items():
             
-            # in_indices = getattr(self, "in_indices_{}".format(s))
-            # out_indices = getattr(self, "out_indices_{}".format(s))
-            in_indices = self.in_indices[s]
-            out_indices = self.out_indices[s]
+            in_indices = getattr(self, "in_indices_{}".format(s))
+            out_indices = getattr(self, "out_indices_{}".format(s))
             
-            # if contiguous:
-            #     # fm = input[:, in_indices[0]:in_indices[1], ...]
-            #     fm = jax.lax.dynamic_slice_in_dim(input, in_indices[0], in_indices[1]-in_indices[0], axis=1)
-            # else:
-            fm = input[:, in_indices, ...]
+            if contiguous:
+                fm = input[:, in_indices[0]:in_indices[1], ...]
+            else:
+                fm = input[:, in_indices, ...]
                 
             # split the channel dimension in 2 dimensions, separating fields
-            fm = fm.reshape(b, -1, s, *spatial_shape)
+            fm = fm.view(b, -1, s, *spatial_shape)
             
-            # max_activations, _ = torch.max(fm, 2)
-            max_activations = jnp.max(fm, 2)
+            max_activations, _ = torch.max(fm, 2)
             
-            # if contiguous:
-            #     output = output.at[:, out_indices[0]:out_indices[1], ...].set(max_activations)
-            # else:
-            output = output.at[:, out_indices, ...].set(max_activations)
+            if contiguous:
+                output[:, out_indices[0]:out_indices[1], ...] = max_activations
+            else:
+                output[:, out_indices, ...] = max_activations
         
         # wrap the result in a GeometricTensor
         return GeometricTensor(output, self.out_type, coords)
@@ -149,26 +134,25 @@ class GroupPooling(EquivariantModule):
 
         return (b, self.out_type.size, *spatial_shape)
 
-    def check_equivariance(self, key: PRNGKeyArray, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
     
         c = self.in_type.size
     
-        # x = torch.randn(3, c, 10, 10)
-        x = jax.random.normal(key, (3, c, 10, 10))
+        x = torch.randn(3, c, 10, 10)
     
         x = GeometricTensor(x, self.in_type)
     
         errors = []
     
         for el in self.space.testing_elements:
-            out1 = np.array(self(x).transform_fibers(el).tensor)
-            out2 = np.array(self(x.transform_fibers(el)).tensor)
+            out1 = self(x).transform_fibers(el)
+            out2 = self(x.transform_fibers(el))
         
-            errs = (out1.tensor - out2.tensor)
+            errs = (out1.tensor - out2.tensor).detach().numpy()
             errs = np.abs(errs).reshape(-1)
             print(el, errs.max(), errs.mean(), errs.var())
         
-            assert jnp.allclose(out1.tensor, out2.tensor, atol=atol, rtol=rtol), \
+            assert torch.allclose(out1.tensor, out2.tensor, atol=atol, rtol=rtol), \
                 'The error found during equivariance check with element "{}" is too high: max = {}, mean = {} var ={}' \
                     .format(el, errs.max(), errs.mean(), errs.var())
         
@@ -219,33 +203,33 @@ class GroupPooling(EquivariantModule):
         return '{in_type}'.format(**self.__dict__)
 
 
-# class MaxPoolChannels(nn.Module):
+class MaxPoolChannels(nn.Module):
     
-#     def __init__(self, kernel_size: int):
-#         r"""
+    def __init__(self, kernel_size: int):
+        r"""
         
-#         Module that computes the maximum activation within each group of ``kernel_size`` consecutive channels.
+        Module that computes the maximum activation within each group of ``kernel_size`` consecutive channels.
         
-#         Args:
-#             kernel_size (int): the size of the group of channels the max is computed over
+        Args:
+            kernel_size (int): the size of the group of channels the max is computed over
             
-#         """
-#         super(MaxPoolChannels, self).__init__()
-#         self.kernel_size = kernel_size
+        """
+        super(MaxPoolChannels, self).__init__()
+        self.kernel_size = kernel_size
         
-#     def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         
-#         assert input.shape[1] % self.kernel_size == 0, '''
-#             Error! The input number of channels ({}) is not divisible by the max pooling kernel size ({})
-#         '''.format(input.shape[1], self.kernel_size)
+        assert input.shape[1] % self.kernel_size == 0, '''
+            Error! The input number of channels ({}) is not divisible by the max pooling kernel size ({})
+        '''.format(input.shape[1], self.kernel_size)
         
-#         b = input.shape[0]
-#         c = input.shape[1] // self.kernel_size
-#         s = input.shape[2:]
+        b = input.shape[0]
+        c = input.shape[1] // self.kernel_size
+        s = input.shape[2:]
         
-#         shape = (b, c, self.kernel_size) + s
+        shape = (b, c, self.kernel_size) + s
         
-#         return input.view(shape).max(2)[0]
+        return input.view(shape).max(2)[0]
 
-#     def extra_repr(self):
-#         return 'kernel_size={kernel_size}'.format(**self.__dict__)
+    def extra_repr(self):
+        return 'kernel_size={kernel_size}'.format(**self.__dict__)

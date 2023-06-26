@@ -1,27 +1,25 @@
 
-from collections import defaultdict
-from typing import Callable, Dict, Iterable, List
+from escnn_jax.kernels import KernelBasis, EmptyBasisException
+from escnn_jax.group import Representation
+from escnn_jax.nn.modules import utils
 
-import equinox as eqx
-import jax.numpy as jnp
-import numpy as np
-# import torch
-from jaxtyping import Array, PRNGKeyArray
-
-from escnn.group import Representation
-from escnn.kernels import EmptyBasisException, KernelBasis
-from escnn.nn.modules import utils
+from .basismanager import BasisManager
+from .basisexpansion_singleblock import block_basisexpansion
 
 from . import retrieve_indices
-from .basisexpansion_singleblock import block_basisexpansion
-from .basismanager import BasisManager
+
+from collections import defaultdict
+
+from typing import Callable, List, Iterable, Dict
+
+import torch
+import numpy as np
+
 
 __all__ = ["BlocksBasisExpansion"]
 
 
-# class BlocksBasisExpansion(torch.nn.Module, BasisManager):
-# class BlocksBasisExpansion(eqx.Module, BasisManager):
-class BlocksBasisExpansion(BasisManager):
+class BlocksBasisExpansion(torch.nn.Module, BasisManager):
     
     def __init__(self,
                  in_reprs: List[Representation],
@@ -64,23 +62,18 @@ class BlocksBasisExpansion(BasisManager):
         
         # iterate through all different pairs of input/output representations
         # and, for each of them, build a basis
-
-        # for i_repr in set(in_reprs):
-            # for o_repr in set(out_reprs):
-        for i_repr in in_reprs:
-            for o_repr in out_reprs:
+        for i_repr in set(in_reprs):
+            for o_repr in set(out_reprs):
                 reprs_names = (i_repr.name, o_repr.name)
-                # print(reprs_names)
-
                 try:
+                    
                     basis = basis_generator(i_repr, o_repr)
-
+                    
                     block_expansion = block_basisexpansion(basis, points, basis_filter=basis_filter, recompute=recompute)
                     _block_expansion_modules[reprs_names] = block_expansion
-                
+                    
                     # register the block expansion as a submodule
-                    # self.add_module(f"block_expansion_{self._escape_pair(reprs_names)}", block_expansion)
-                    setattr(self, f"block_expansion_{self._escape_pair(reprs_names)}", block_expansion)
+                    self.add_module(f"block_expansion_{self._escape_pair(reprs_names)}", block_expansion)
                     
                 except EmptyBasisException:
                     # print(f"Empty basis at {reprs_names}")
@@ -91,7 +84,6 @@ class BlocksBasisExpansion(BasisManager):
 
         # the list of all pairs of input/output representations which don't have an empty basis
         self._representations_pairs = sorted(list(_block_expansion_modules.keys()))
-        # {print(k, v.sampled_basis) for k, v in _block_expansion_modules.items()}
         
         self._n_pairs = len(set(in_reprs)) * len(set(out_reprs))
 
@@ -133,15 +125,13 @@ class BlocksBasisExpansion(BasisManager):
                 setattr(self, 'out_indices_{}'.format(self._escape_pair(io_pair)), out_indices)
 
             else:
-                out_indices, in_indices = jnp.meshgrid(*[_out_indices[io_pair[1]], _in_indices[io_pair[0]]])
+                out_indices, in_indices = torch.meshgrid([_out_indices[io_pair[1]], _in_indices[io_pair[0]]])
                 in_indices = in_indices.reshape(-1)
                 out_indices = out_indices.reshape(-1)
                 
                 # register the indices tensors and the bases tensors as parameters of this module
-                # self.register_buffer('in_indices_{}'.format(self._escape_pair(io_pair)), in_indices)
-                # self.register_buffer('out_indices_{}'.format(self._escape_pair(io_pair)), out_indices)
-                setattr(self, 'in_indices_{}'.format(self._escape_pair(io_pair)), in_indices)
-                setattr(self, 'out_indices_{}'.format(self._escape_pair(io_pair)), out_indices)
+                self.register_buffer('in_indices_{}'.format(self._escape_pair(io_pair)), in_indices)
+                self.register_buffer('out_indices_{}'.format(self._escape_pair(io_pair)), out_indices)
 
             # number of occurrences of the input/output pair `io_pair`
             n_pairs = self._in_count[io_pair[0]] * self._out_count[io_pair[1]]
@@ -301,24 +291,23 @@ class BlocksBasisExpansion(BasisManager):
         coefficients = weights[self._weights_ranges[io_pair][0]:self._weights_ranges[io_pair][1]]
     
         # reshape coefficients for the batch matrix multiplication
-        coefficients = coefficients.reshape((-1, block_expansion.dimension()))
+        coefficients = coefficients.view(-1, block_expansion.dimension())
         
         # expand the current subset of basis vectors and set the result in the appropriate place in the filter
         _filter = block_expansion(coefficients)
         k, o, i, p = _filter.shape
         
-        _filter = _filter.reshape((
+        _filter = _filter.view(
             self._out_count[io_pair[1]],
             self._in_count[io_pair[0]],
             o,
             i,
             self.S,
-        ))
-        # _filter = _filter.transpose(1, 2)
-        _filter = jnp.swapaxes(_filter, 1, 2)
+        )
+        _filter = _filter.transpose(1, 2)
         return _filter
     
-    def __call__(self, weights: Array) -> Array:
+    def forward(self, weights: torch.Tensor) -> torch.Tensor:
         """
         Forward step of the Module which expands the basis and returns the filter built
 
@@ -361,29 +350,29 @@ class BlocksBasisExpansion(BasisManager):
                 if _filter is None:
                     # build the tensor which will contain the filter
                     # this lazy strategy allows us to use expanded.dtype which is dynamically chosen by PyTorch's AMP
-                    _filter = jnp.zeros(
-                        (self._output_size, self._input_size, self.S), dtype=expanded.dtype
-                    ) #  device=weights.device
+                    _filter = torch.zeros(
+                        self._output_size, self._input_size, self.S, device=weights.device, dtype=expanded.dtype
+                    )
 
                 if self._contiguous[io_pair]:
-                    _filter = _filter.at[
+                    _filter[
                         out_indices[0]:out_indices[1],
                         in_indices[0]:in_indices[1],
                         :,
-                    ].set(expanded.reshape(out_indices[2], in_indices[2], self.S))
+                    ] = expanded.reshape(out_indices[2], in_indices[2], self.S)
                 else:
-                    _filter = _filter.at[
+                    _filter[
                         out_indices,
                         in_indices,
                         :,
-                    ].set(expanded.reshape(-1, self.S))
+                    ] = expanded.reshape(-1, self.S)
 
             # just in case
             if _filter is None:
                 # build the tensor which will contain the filter
-                _filter = jnp.zeros(
-                    (self._output_size, self._input_size, self.S), dtype=weights.dtype
-                ) # device=weights.device
+                _filter = torch.zeros(
+                    self._output_size, self._input_size, self.S, device=weights.device, dtype=weights.dtype
+                )
 
         # return the new filter
         return _filter
@@ -422,9 +411,9 @@ class BlocksBasisExpansion(BasisManager):
                 if getattr(self, f"out_indices_{io_escaped}") != getattr(other, f"out_indices_{io_escaped}"):
                     return False
             else:
-                if jnp.any(getattr(self, f"in_indices_{io_escaped}") != getattr(other, f"in_indices_{io_escaped}")):
+                if torch.any(getattr(self, f"in_indices_{io_escaped}") != getattr(other, f"in_indices_{io_escaped}")):
                     return False
-                if jnp.any(getattr(self, f"out_indices_{io_escaped}") != getattr(other, f"out_indices_{io_escaped}")):
+                if torch.any(getattr(self, f"out_indices_{io_escaped}") != getattr(other, f"out_indices_{io_escaped}")):
                     return False
 
             if getattr(self, f"block_expansion_{io_escaped}") != getattr(other, f"block_expansion_{io_escaped}"):

@@ -1,30 +1,24 @@
-from abc import ABC, abstractmethod
-from typing import Callable, Dict, Iterable, List, Tuple, Union
-
-# import torch
-import jax
-import jax.numpy as jnp
 import numpy as np
-from jaxtyping import Array, PRNGKeyArray
+import torch
 
-from escnn.group import *
+from escnn_jax.group import *
 
-from .basis import EmptyBasisException, KernelBasis
-from .harmonic_polynomial_r3 import HarmonicPolynomialR3Generator
+from abc import ABC, abstractmethod
+from typing import List, Union, Tuple, Callable, Dict, Iterable
+
+from .basis import KernelBasis, EmptyBasisException
 from .steerable_filters_basis import SteerableFiltersBasis
+
+from .harmonic_polynomial_r3 import HarmonicPolynomialR3Generator
+
 
 __all__ = [
     'GaussianRadialProfile',
     'SphericalShellsBasis'
 ]
 
-def normalize(x, dim=1, eps=1e-12):
-    return x / (jnp.linalg.norm(x, axis=dim) + eps)
-
 
 class GaussianRadialProfile(KernelBasis):
-    sigma: Array
-    radii: Array
     
     def __init__(self, radii: List[float], sigma: Union[List[float], float]):
         r"""
@@ -67,13 +61,10 @@ class GaussianRadialProfile(KernelBasis):
         
         super(GaussianRadialProfile, self).__init__(len(radii), (1, 1))
         
-        # self.register_buffer('radii', torch.tensor(radii, dtype=torch.float32).reshape(1, -1, 1, 1))
-        # self.register_buffer('sigma', torch.tensor(sigma, dtype=torch.float32).reshape(1, -1, 1, 1))
-        setattr(self, 'radii', jnp.array(radii, dtype=float).reshape(1, -1, 1, 1))
-        setattr(self, 'sigma', jnp.array(sigma, dtype=float).reshape(1, -1, 1, 1))
+        self.register_buffer('radii', torch.tensor(radii, dtype=torch.float32).reshape(1, -1, 1, 1))
+        self.register_buffer('sigma', torch.tensor(sigma, dtype=torch.float32).reshape(1, -1, 1, 1))
     
-    # def sample(self, radii: Array, out: Array = None) -> Array:
-    def sample(self, radii: Array) -> Array:
+    def sample(self, radii: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on the discrete set of radii in ``radii``.
@@ -93,24 +84,21 @@ class GaussianRadialProfile(KernelBasis):
         assert radii.shape[1] == 1
         S = radii.shape[0]
         
-        # if out is None:
-        #     out = jnp.empty((S, self.dim, self.shape[0], self.shape[1]), dtype=radii.dtype) # , device=radii.device
+        if out is None:
+            out = torch.empty((S, self.dim, self.shape[0], self.shape[1]), device=radii.device, dtype=radii.dtype)
         
-        # assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
+        assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
         
         radii = radii.reshape(-1, 1, 1, 1)
 
-        assert not jnp.isnan(radii).any()
+        assert not torch.isnan(radii).any()
 
         d = (self.radii - radii) ** 2
 
-        # if radii.requires_grad:
-        #     out[:] = jnp.exp(-0.5 * d / self.sigma ** 2)
-        # else:
-        #     out = jnp.exp(-0.5 * d / self.sigma ** 2, out=out)
-        out = jnp.exp(-0.5 * d / self.sigma ** 2)
-
-        assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
+        if radii.requires_grad:
+            out[:] = torch.exp(-0.5 * d / self.sigma ** 2)
+        else:
+            out = torch.exp(-0.5 * d / self.sigma ** 2, out=out)
 
         return out
     
@@ -121,17 +109,17 @@ class GaussianRadialProfile(KernelBasis):
     def __eq__(self, other):
         if isinstance(other, GaussianRadialProfile):
             return (
-                        jnp.allclose(self.radii, other.radii)
-                    and jnp.allclose(self.sigma, other.sigma)
+                        torch.allclose(self.radii, other.radii.to(self.radii.device))
+                    and torch.allclose(self.sigma, other.sigma.to(self.sigma.device))
             )
         else:
             return False
     
     def __hash__(self):
-        return hash(np.asarray(self.radii).tobytes()) + hash(np.asarray(self.sigma).tobytes())
+        return hash(self.radii.cpu().numpy().tobytes()) + hash(self.sigma.cpu().numpy().tobytes())
 
 
-def circular_harmonics(points: Array, L: int, phase: float = 0.):
+def circular_harmonics(points: torch.Tensor, L: int, phase: float = 0.):
     r"""
         Compute the circular harmonics up to frequency ``L``.
     """
@@ -139,37 +127,31 @@ def circular_harmonics(points: Array, L: int, phase: float = 0.):
     assert len(points.shape) == 2
     assert points.shape[1] == 2
 
-    # device = points.device
+    device = points.device
     dtype = points.dtype
 
     S = points.shape[0]
 
     x, y = points.T
 
-    angles = jnp.arctan2(y, x).reshape(S, 1) - phase
+    angles = torch.atan2(y, x).view(S, 1) - phase
 
-    freqs = jnp.arange(1, L+1, step=1, dtype=dtype).reshape(1, L)
+    freqs = torch.arange(1, L+1, device=device, dtype=dtype).view(1, L)
 
     freqs_times_angles = freqs * angles
 
     del freqs, angles
 
-    # Y = jnp.empty((S, 2 * L + 1), dtype=dtype) # , device=device)
-    # Y = Y.at[:, 0].set(1.)
-    # Y = Y.at[:, 1::2].set(jnp.cos(freqs_times_angles))
-    # Y = Y.at[:, 2::2].set(jnp.sin(freqs_times_angles))
-    odd_freqs = jnp.cos(freqs_times_angles)
-    even_freqs = jnp.sin(freqs_times_angles)
-    Y = jnp.concatenate([odd_freqs, even_freqs], axis=1)
-    Y = jax.vmap(lambda x: jnp.ravel(x, order='F'))(Y)
-    Y = jnp.concatenate([jnp.ones((S, 1)), Y], axis=1)
+    Y = torch.empty((S, 2 * L + 1), dtype=dtype, device=device)
+
+    Y[:, 0] = 1.
+    Y[:, 1::2] = torch.cos(freqs_times_angles)
+    Y[:, 2::2] = torch.sin(freqs_times_angles)
 
     return Y
 
 
 class SphericalShellsBasis(SteerableFiltersBasis):
-    _filter: Array
-    L: int
 
     def __init__(self,
                  L: int,
@@ -222,7 +204,7 @@ class SphericalShellsBasis(SteerableFiltersBasis):
         G = o3_group(L)
 
         if filter is not None:
-            _filter = jnp.zeros((self._angular_dim * len(radial),), dtype=jnp.bool_)
+            _filter = torch.zeros(self._angular_dim * len(radial), dtype=torch.bool)
 
             js = []
             _idx_map = []
@@ -284,12 +266,11 @@ class SphericalShellsBasis(SteerableFiltersBasis):
         self.harmonics_generator = HarmonicPolynomialR3Generator(self.L)
 
         if _filter is not None:
-            # self.register_buffer('_filter', _filter)
-            setattr(self, '_filter', _filter)
+            self.register_buffer('_filter', _filter)
         else:
             self._filter = None
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on a discrete set of ``points`` in the space :math:`\R^n`.
@@ -311,22 +292,22 @@ class SphericalShellsBasis(SteerableFiltersBasis):
 
         S = points.shape[0]
 
-        assert not jnp.isnan(points).any()
+        assert not torch.isnan(points).any()
 
-        radii = jnp.linalg.norm(points, axis=1, keepdims=True)
+        radii = torch.norm(points, dim=1, keepdim=True)
 
         non_origin_mask = (radii > 1e-9).reshape(-1)
         any_origin = not non_origin_mask.all()
         # sphere = points[non_origin_mask, :] / radii[non_origin_mask, :]
         if any_origin:
-            sphere = jnp.empty_like(points)
-            sphere[non_origin_mask, :] = normalize(points[non_origin_mask], dim=1)
+            sphere = torch.empty_like(points)
+            sphere[non_origin_mask, :] = torch.nn.functional.normalize(points[non_origin_mask], dim=1)
             sphere[~non_origin_mask, :] = points[~non_origin_mask]
         else:
-            sphere = normalize(points, dim=1)
+            sphere = torch.nn.functional.normalize(points, dim=1)
 
         if out is None:
-            out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
+            out = torch.empty(S, self.dim, 1, 1, device=points.device, dtype=points.dtype)
         
         assert out.shape == (S, self.dim, 1, 1)
         
@@ -335,7 +316,7 @@ class SphericalShellsBasis(SteerableFiltersBasis):
         assert radial.shape == (S, len(self.radial), 1, 1)
         radial = radial[..., 0, 0]
 
-        assert not jnp.isnan(radial).any()
+        assert not torch.isnan(radial).any()
 
         # sample the angular basis
         spherical = self.harmonics_generator(sphere)
@@ -348,16 +329,16 @@ class SphericalShellsBasis(SteerableFiltersBasis):
             if spherical.shape[1] > 1:
                 assert (spherical[~non_origin_mask, 1:]).abs().max().item() < 1e-7, (spherical[~non_origin_mask, 1:]).abs().max().item()
 
-        assert not jnp.isnan(spherical).any()
+        assert not torch.isnan(spherical).any()
 
-        tensor_product = jnp.einsum("pa,pb->pab", radial, spherical)
+        tensor_product = torch.einsum("pa,pb->pab", radial, spherical)
 
         n_radii = len(self.radial)
 
         if self._filter is None:
             tmp_out = out
         else:
-            tmp_out = jnp.empty((S, self._angular_dim*n_radii, 1, 1), dtype=points.dtype)
+            tmp_out = torch.empty(S, self._angular_dim*n_radii, 1, 1, device=points.device, dtype=points.dtype)
 
         for j in range(self.L+1):
             first, last = j**2, (j+1)**2
@@ -602,14 +583,6 @@ class SphericalShellsBasis(SteerableFiltersBasis):
 
 
 class CircularShellsBasis(SteerableFiltersBasis):
-    L: int
-    axis: float
-    radial: GaussianRadialProfile
-    _filter:  Callable[[Dict], bool]
-    _angular_dim: int
-    _num_inv_spaces: int
-    _idx_map: Array
-    _steerable_idx_map: Array
 
     def __init__(self,
                  L: int,
@@ -663,7 +636,7 @@ class CircularShellsBasis(SteerableFiltersBasis):
         G = o2_group(L)
 
         if filter is not None:
-            _filter = jnp.zeros((self._angular_dim * len(radial),), dtype=bool)
+            _filter = torch.zeros(self._angular_dim * len(radial), dtype=torch.bool)
 
             js = []
             _idx_map = []
@@ -729,11 +702,9 @@ class CircularShellsBasis(SteerableFiltersBasis):
         if _filter is None:
             self._filter = None
         else:
-            # self.register_buffer('_filter', _filter)
-            setattr(self, '_filter', _filter)
+            self.register_buffer('_filter', _filter)
 
-    # def sample(self, points: Array, out: Array = None) -> Array:
-    def sample(self, points: Array) -> Array:
+    def sample(self, points: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
         r"""
 
         Sample the continuous basis elements on a discrete set of ``points`` in the space :math:`\R^n`.
@@ -755,80 +726,60 @@ class CircularShellsBasis(SteerableFiltersBasis):
 
         S = points.shape[0]
 
-        radii = jnp.linalg.norm(points, axis=1, keepdims=True)
+        radii = torch.norm(points, dim=1, keepdim=True)
 
         non_origin_mask = (radii > 1e-9).reshape(-1)
         sphere = points[non_origin_mask, :] / radii[non_origin_mask, :]
 
-        # if out is None:
-        #     out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
+        if out is None:
+            out = torch.empty(S, self.dim, 1, 1, device=points.device, dtype=points.dtype)
 
+        assert out.shape == (S, self.dim, 1, 1)
 
         # sample the radial basis
         radial = self.radial.sample(radii)
         assert radial.shape[-2:] == (1, 1)
         radial = radial[..., 0, 0]
 
-        assert not jnp.isnan(radial).any()
+        assert not torch.isnan(radial).any()
 
         # sample the angular basis
-        circular = jnp.empty((S, self._angular_dim), dtype=points.dtype)
-        # print("circular", circular.shape)
-        # print("circular[non_origin_mask, :]", circular[non_origin_mask, :].shape)
-        # print("circular[~non_origin_mask, :1]", circular[~non_origin_mask, :1].shape)
-        # print("circular[~non_origin_mask, 1:]", circular[~non_origin_mask, 1:].shape)
-        # print(non_origin_mask)
-        # # circular[:] = np.nan
+        circular = torch.empty(S, self._angular_dim, device=points.device, dtype=points.dtype)
+        # circular[:] = np.nan
 
         # where r>0, we sample all frequencies
-        circular = circular.at[non_origin_mask, :].set(circular_harmonics(sphere, self.L, phase=self.axis))
+        circular[non_origin_mask, :] = circular_harmonics(sphere, self.L, phase=self.axis)
 
-        # # only frequency 0 is sampled at the origin. Other frequencies are set to 0
-        # circular = circular.at[~non_origin_mask, :1].set(1.)
+        # only frequency 0 is sampled at the origin. Other frequencies are set to 0
+        circular[~non_origin_mask, :1] = 1.
 
-        # # This trick allows us to compute meaningful gradients at the origin
-        # # Unfortunately, only the newest versions of PyTorch and CUDA support these complex operations
-        # # complex_points = points[~non_origin_mask, 0] + 1j * points[~non_origin_mask, 1]
-        # # complex_powers = complex_points.view(S, 1).pow(torch.arange(1, self.L).view(1, self.L))
-        # # circular[~non_origin_mask, 1::2] = complex_powers.real
-        # # circular[~non_origin_mask, 2::2] = complex_powers.img
-        # circular = circular.at[~non_origin_mask, 1:].set(0.)
-        origin = jnp.concatenate([jnp.ones((1)), jnp.zeros((self._angular_dim - 1))])
-        circular = circular.at[~non_origin_mask, :].set(origin)
+        # This trick allows us to compute meaningful gradients at the origin
+        # Unfortunately, only the newest versions of PyTorch and CUDA support these complex operations
+        # complex_points = points[~non_origin_mask, 0] + 1j * points[~non_origin_mask, 1]
+        # complex_powers = complex_points.view(S, 1).pow(torch.arange(1, self.L).view(1, self.L))
+        # circular[~non_origin_mask, 1::2] = complex_powers.real
+        # circular[~non_origin_mask, 2::2] = complex_powers.img
+        circular[~non_origin_mask, 1:] = 0.
 
-        # non_origin = circular_harmonics(sphere, self.L, phase=self.axis)
-        # circular2 = jnp.where(non_origin_mask, non_origin, non_origin)
-        # assert jnp.allclose(circular, circular2)
-
-        tensor_product = jnp.einsum("pa,pb->pab", radial, circular)
+        tensor_product = torch.einsum("pa,pb->pab", radial, circular)
 
         n_radii = len(self.radial)
 
-        # if self._filter is None:
-        #     tmp_out = out
-        # else:
-        #     tmp_out = jnp.empty((S, self._angular_dim*n_radii, 1, 1), dtype=points.dtype)
-        # tmp_out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
-        tmp_out = []
+        if self._filter is None:
+            tmp_out = out
+        else:
+            tmp_out = torch.empty(S, self._angular_dim*n_radii, 1, 1, device=points.device, dtype=points.dtype)
+
         for j in range(self.L+1):
             dim = 2 if j > 0 else 1
             last = 2*j+1
             first = last - dim
-            # tmp_out[:, first * n_radii:last * n_radii, 0, 0].view(
-            #     S, n_radii, dim
-            # )[:] = tensor_product[:, :, first:last]
-            prod = tensor_product[:, :, first:last].reshape(S, dim * n_radii)
-            # tmp_out = tmp_out.at[:, first * n_radii:last * n_radii, 0, 0].set(prod)
-            tmp_out.append(prod)
-        tmp_out = jnp.concatenate(tmp_out, axis=1)[..., None, None]
+            tmp_out[:, first * n_radii:last * n_radii, 0, 0].view(
+                S, n_radii, dim
+            )[:] = tensor_product[:, :, first:last]
 
         if self._filter is not None:
-            # out[:] = tmp_out[:, self._filter, ...]
-            out = tmp_out[:, self._filter, ...]
-        else:
-            out = tmp_out
-
-        assert out.shape == (S, self.dim, 1, 1)
+            out[:] = tmp_out[:, self._filter, ...]
 
         return out
 

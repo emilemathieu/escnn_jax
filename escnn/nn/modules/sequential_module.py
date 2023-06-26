@@ -1,6 +1,8 @@
 
-from escnn.nn import GeometricTensor
+from escnn_jax.nn import GeometricTensor
 from .equivariant_module import EquivariantModule
+
+import torch
 
 from typing import List, Tuple, Union, Any, Iterator
 
@@ -10,7 +12,6 @@ __all__ = ["SequentialModule"]
 
 
 class SequentialModule(EquivariantModule):
-    _modules: OrderedDict[str, EquivariantModule]
     
     def __init__(self,
                  *args: EquivariantModule,
@@ -57,8 +58,7 @@ class SequentialModule(EquivariantModule):
 
         self.in_type = None
         self.out_type = None
-        self._modules = {}
-
+        
         if len(args) == 1 and isinstance(args[0], OrderedDict):
             for key, module in args[0].items():
                 assert isinstance(module, EquivariantModule)
@@ -68,10 +68,10 @@ class SequentialModule(EquivariantModule):
                 assert isinstance(module, EquivariantModule)
                 self.add_module(str(idx), module)
         
-        for i in range(1, len(self._modules.values())):
-            assert self._modules.values()[i-1].out_type == self._modules.values()[i].in_type
+        # for i in range(1, len(self._modules.values())):
+        #     assert self._modules.values()[i-1].out_type == self._modules.values()[i].in_type
         
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
         
         Args:
@@ -105,8 +105,7 @@ class SequentialModule(EquivariantModule):
             assert module.in_type == self.out_type, f"{module.in_type} != {self.out_type}"
             
         self.out_type = module.out_type
-        # super(SequentialModule, self).add_module(name, module)
-        self._modules[name] = module
+        super(SequentialModule, self).add_module(name, module)
 
     def append(self, module: EquivariantModule) -> 'SequentialModule':
         r"""Appends a new EquivariantModule at the end.
@@ -167,4 +166,4 @@ class SequentialModule(EquivariantModule):
                 (name, module)
             )
 
-        # return torch.nn.Sequential(OrderedDict(submodules))
+        return torch.nn.Sequential(OrderedDict(submodules))

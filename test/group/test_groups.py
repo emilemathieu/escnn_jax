@@ -1,9 +1,9 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import *
+from escnn_jax.group import *
 
-from escnn.group.utils import cycle_isclose
+from escnn_jax.group.utils import cycle_isclose
 
 import math
 
@@ -55,7 +55,7 @@ class TestGroups(TestCase):
         # Check that the `_is_element` method of Octahedral() is consistent with the `is_element` method based
         # on the rotation order and the rotation axis
 
-        from escnn.group.groups.octa import _is_axis_aligned
+        from escnn_jax.group.groups.octa import _is_axis_aligned
 
         def is_element(q):
             theta = 2 * np.arccos(np.clip(q[3], -1., 1.))

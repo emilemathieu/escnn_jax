@@ -1,9 +1,9 @@
 import unittest
 from unittest import TestCase
 
-from escnn.nn import *
-from escnn.group import *
-from escnn.gspaces import *
+from escnn_jax.nn import *
+from escnn_jax.group import *
+from escnn_jax.gspaces import *
 
 import numpy as np
 

@@ -1,29 +1,26 @@
-import math
-from typing import Callable, List, Union
+from torch.nn.functional import conv2d, pad
 
-# from torch.nn.functional import conv2d, pad
-import equinox as eqx
-import jax
-import jax.numpy as jnp
-import numpy as np
-# import torch
-from jaxtyping import Array, PRNGKeyArray
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
+import escnn_jax.nn
 
-import escnn.nn
-from escnn.group import Group, Representation
-from escnn.gspaces import GSpace2D
-from escnn.kernels import KernelBasis
-from escnn.nn import FieldType, GeometricTensor, init
+from escnn_jax.group import Representation, Group
+from escnn_jax.kernels import KernelBasis
+from escnn_jax.gspaces import GSpace2D
 
 from .rd_convolution import _RdConv
+
+from typing import Callable, Union, List
+
+import torch
+import numpy as np
+import math
+
 
 __all__ = ["R2Conv"]
 
 
 class R2Conv(_RdConv):
-    _rings: List[float] = eqx.field(static=True)
-    _sigma: Union[float, List[float]] = eqx.field(static=True)
-    _maximum_frequency: int = eqx.field(static=True)
     
     def __init__(self,
                  in_type: FieldType,
@@ -34,7 +31,7 @@ class R2Conv(_RdConv):
                  dilation: int = 1,
                  padding_mode: str = 'zeros',
                  groups: int = 1,
-                 use_bias: bool = True,
+                 bias: bool = True,
                  sigma: Union[List[float], float] = None,
                  frequencies_cutoff: Union[float, Callable[[float], int]] = None,
                  rings: List[float] = None,
@@ -42,9 +39,6 @@ class R2Conv(_RdConv):
                  recompute: bool = False,
                  basis_filter: Callable[[dict], bool] = None,
                  initialize: bool = True,
-                 inference: bool = False,
-                 *,
-                 key: PRNGKeyArray
                  ):
         r"""
         
@@ -181,77 +175,61 @@ class R2Conv(_RdConv):
             dilation,
             padding_mode,
             groups,
-            use_bias,
+            bias,
             basis_filter,
             recompute,
-            inference
         )
         
         if initialize:
             # by default, the weights are initialized with a generalized form of He's weight initialization
-            # escnn.nn.init.generalized_he_init(self.weights.data, self.basisexpansion)
-            # self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
-            self.weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
+            escnn_jax.nn.init.generalized_he_init(self.weights.data, self.basisexpansion)
 
     def _build_kernel_basis(self, in_repr: Representation, out_repr: Representation) -> KernelBasis:
         return self.space.build_kernel_basis(in_repr, out_repr, self._sigma, self._rings,
                                              maximum_frequency=self._maximum_frequency
                                              )
     
-    # def __call__(self, input: GeometricTensor):
-    #     r"""
-    #     Convolve the input with the expanded filter and bias.
+    def forward(self, input: GeometricTensor):
+        r"""
+        Convolve the input with the expanded filter and bias.
         
-    #     Args:
-    #         input (GeometricTensor): input feature field transforming according to ``in_type``
+        Args:
+            input (GeometricTensor): input feature field transforming according to ``in_type``
 
-    #     Returns:
-    #         output feature field transforming according to ``out_type``
+        Returns:
+            output feature field transforming according to ``out_type``
             
-    #     """
+        """
         
-    #     assert input.type == self.in_type
+        assert input.type == self.in_type
         
-    #     # if not self.training:
-    #     if self.inference:
-    #         _filter = self.filter
-    #         _bias = self.expanded_bias
-    #     else:
-    #         # retrieve the filter and the bias
-    #         _filter, _bias = self.expand_parameters()
+        if not self.training:
+            _filter = self.filter
+            _bias = self.expanded_bias
+        else:
+            # retrieve the filter and the bias
+            _filter, _bias = self.expand_parameters()
         
-    #     # use it for convolution and return the result
+        # use it for convolution and return the result
         
-    #     if self.padding_mode == 'zeros':
-    #         # output = conv2d(input.tensor, _filter,
-    #         #                 stride=self.stride,
-    #         #                 padding=self.padding,
-    #         #                 dilation=self.dilation,
-    #         #                 groups=self.groups,
-    #         #                 bias=_bias)
-    #         padding = tuple((self.padding, self.padding) for _ in range(self.d))
-    #         output = jax.lax.conv_general_dilated(
-    #             lhs=input.tensor,
-    #             rhs=_filter,
-    #             window_strides=self.stride,
-    #             padding=padding,
-    #             rhs_dilation=self.dilation,
-    #             feature_group_count=self.groups,
-    #         )
-    #         if self.use_bias:
-    #             output = output + _bias
-    #     else:
-    #         raise NotImplementedError()
-    #         # output = conv2d(pad(input.tensor, self._reversed_padding_repeated_twice, self.padding_mode),
-    #         #                 _filter,
-    #         #                 stride=self.stride,
-    #         #                 dilation=self.dilation,
-    #         #                 groups=self.groups,
-    #         #                 bias=_bias)
+        if self.padding_mode == 'zeros':
+            output = conv2d(input.tensor, _filter,
+                            stride=self.stride,
+                            padding=self.padding,
+                            dilation=self.dilation,
+                            groups=self.groups,
+                            bias=_bias)
+        else:
+            output = conv2d(pad(input.tensor, self._reversed_padding_repeated_twice, self.padding_mode),
+                            _filter,
+                            stride=self.stride,
+                            dilation=self.dilation,
+                            groups=self.groups,
+                            bias=_bias)
         
-    #     return GeometricTensor(output, self.out_type, coords=None)
+        return GeometricTensor(output, self.out_type, coords=None)
     
-    def check_equivariance(self, key, atol: float = 0.1, rtol: float = 0.1, assertion: bool = True, verbose: bool = True):
+    def check_equivariance(self, atol: float = 0.1, rtol: float = 0.1, assertion: bool = True, verbose: bool = True):
         
         # np.set_printoptions(precision=5, threshold=30 *self.in_type.size**2, suppress=False, linewidth=30 *self.in_type.size**2)
         
@@ -259,15 +237,16 @@ class R2Conv(_RdConv):
         last_downsampling = 5
         first_downsampling = 5
         
-        initial_size = (feature_map_size * last_downsampling - 1 + self.kernel_size[0]) * first_downsampling
+        initial_size = (feature_map_size * last_downsampling - 1 + self.kernel_size) * first_downsampling
         
         c = self.in_type.size
         
         import matplotlib.image as mpimg
-        # x = mpimg.imread('../group/testimage.jpeg').transpose((2, 0, 1))[np.newaxis, 0:c, :, :]
-        import scipy
         from skimage.measure import block_reduce
         from skimage.transform import resize
+        
+        # x = mpimg.imread('../group/testimage.jpeg').transpose((2, 0, 1))[np.newaxis, 0:c, :, :]
+        import scipy
         x = scipy.datasets.face().transpose((2, 0, 1))[np.newaxis, 0:c, :, :]
 
         x = resize(
@@ -275,7 +254,6 @@ class R2Conv(_RdConv):
             (x.shape[0], x.shape[1], initial_size, initial_size),
             anti_aliasing=True
         )
-        print("x", x.shape)
         
         x = x / 255.0 - 0.5
         
@@ -286,16 +264,17 @@ class R2Conv(_RdConv):
             
             x = np.concatenate(to_stack, axis=1)
         
-        x = GeometricTensor(jnp.array(x), self.in_type)
+        x = GeometricTensor(torch.FloatTensor(x), self.in_type)
         
         def shrink(t: GeometricTensor, s) -> GeometricTensor:
-            return GeometricTensor(jnp.array(block_reduce(t.tensor, s, func=np.mean)), t.type)
+            return GeometricTensor(torch.FloatTensor(block_reduce(t.tensor.detach().numpy(), s, func=np.mean)), t.type)
         
         errors = []
-
+        
         for el in self.space.testing_elements:
-            out1 = np.array(self(shrink(x, (1, 1, 5, 5))).transform(el).tensor)
-            out2 = np.array(self(shrink(x.transform(el), (1, 1, 5, 5))).tensor)
+            
+            out1 = self(shrink(x, (1, 1, 5, 5))).transform(el).tensor.detach().numpy()
+            out2 = self(shrink(x.transform(el), (1, 1, 5, 5))).tensor.detach().numpy()
             
             out1 = block_reduce(out1, (1, 1, 5, 5), func=np.mean)
             out2 = block_reduce(out2, (1, 1, 5, 5), func=np.mean)
@@ -354,27 +333,25 @@ class R2Conv(_RdConv):
         
         # set to eval mode so the filter and the bias are updated with the current
         # values of the weights
-        self = self.eval()
+        self.eval()
         _filter = self.filter
         _bias = self.expanded_bias
 
         # build the PyTorch Conv2d module
         has_bias = self.bias is not None
-        conv = eqx.nn.Conv2d(self.in_type.size,
+        conv = torch.nn.Conv2d(self.in_type.size,
                                self.out_type.size,
                                self.kernel_size,
                                padding=self.padding,
                                stride=self.stride,
                                dilation=self.dilation,
                                groups=self.groups,
-                               use_bias=has_bias)
+                               bias=has_bias)
 
         # set the filter and the bias
-        # conv.weight.data = _filter.data
-        conv = eqx.tree_at(lambda m: m.weight, conv, replace=_filter)
+        conv.weight.data = _filter.data
         if has_bias:
-            # conv.bias.data = _bias.data
-            conv = eqx.tree_at(lambda m: m.bias, conv, replace=_bias)
+            conv.bias.data = _bias.data
         
         return conv
 
@@ -424,7 +401,7 @@ def compute_basis_params(
     # by default, the number of rings equals half of the filter size
     if rings is None:
         n_rings = math.ceil(kernel_size / 2)
-        rings = jnp.linspace(0, (kernel_size - 1) // 2, n_rings) * dilation
+        rings = torch.linspace(0, (kernel_size - 1) // 2, n_rings) * dilation
         rings = rings.tolist()
     
     assert all([max_radius >= r >= 0 for r in rings])

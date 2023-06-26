@@ -1,20 +1,16 @@
 
-from typing import Dict, List, Tuple, Union
+from escnn_jax.group import *
 
-# import torch
-import jax
-import jax.numpy as jnp
+import torch
 import numpy as np
-from jaxtyping import Array, PRNGKeyArray
 
-from escnn.group import *
+from typing import Tuple
+
 
 __all__ = ["HarmonicPolynomialR3Generator"]
 
 
-# class HarmonicPolynomialR3Generator(torch.nn.Module):
-class HarmonicPolynomialR3Generator:
-    cob: Dict[int, Array]
+class HarmonicPolynomialR3Generator(torch.nn.Module):
 
     def __init__(self, L: int):
         r"""
@@ -43,8 +39,7 @@ class HarmonicPolynomialR3Generator:
         self.d = self.rho.size
 
         if self.L > 0:
-            # self.register_buffer(f'cob_1', torch.tensor(self.G.standard_representation().change_of_basis_inv, dtype=float))
-            self.cob[1] = jnp.array(self.G.standard_representation().change_of_basis_inv, dtype=float)
+            self.register_buffer(f'cob_1', torch.tensor(self.G.standard_representation().change_of_basis_inv, dtype=torch.float))
 
         for l in range(2, self.L+1):
             rho_l = self.G.irrep((l-1)%2, l-1).tensor(self.G.irrep(1, 1))
@@ -59,19 +54,18 @@ class HarmonicPolynomialR3Generator:
             # this guarantees the column is normalized, i.e. corresponds to the central column of the Wigner D matrix
             cob *= np.sqrt((2*l-1)/l)
 
-            # self.register_buffer(f'cob_{l}', jnp.array(cob, dtype=float))
-            self.cob[l] = jnp.array(cob, dtype=float)
+            self.register_buffer(f'cob_{l}', torch.tensor(cob, dtype=torch.float))
 
-    def forward(self, points: Array):
+    def forward(self, points: torch.Tensor):
         assert points.shape[-1] == 3, points.shape
         shape = points.shape[:-1]
 
-        features_0 = jnp.ones((*shape, 1), dtype=points.dtype) #device=points.device
+        features_0 = torch.ones(*shape, 1, device=points.device, dtype=points.dtype)
 
         if self.L == 0:
             return features_0
 
-        feature_1 = jnp.einsum('...i,ji->...j', points, getattr(self, 'cob_1'))
+        feature_1 = torch.einsum('...i,ji->...j', points, getattr(self, 'cob_1'))
 
         features = [
             features_0,
@@ -79,26 +73,24 @@ class HarmonicPolynomialR3Generator:
         ]
 
         for l in range(2, self.L+1):
-            # cob = getattr(self, f'cob_{l}')
-            cob = self.cob[l]
-            f = jnp.einsum('...i,...j->...ij', features[-1], feature_1).reshape(*shape, -1)
+            cob = getattr(self, f'cob_{l}')
+            f = torch.einsum('...i,...j->...ij', features[-1], feature_1).reshape(*shape, -1)
             assert f.shape[-1] == 3*(2*l-1), (f.shape, l)
-            f = jnp.einsum('...i,ji->...j', f, cob)
+            f = torch.einsum('...i,ji->...j', f, cob)
             assert f.shape[-1] == 2*l+1, (f.shape, l)
 
             features.append(f)
 
-        features = jnp.concatenate(features, dim=-1)
+        features = torch.cat(features, dim=-1)
 
         return features
 
-    def check_equivariance(self, key: PRNGKeyArray, atol: float = 1e-5, rtol: float = 1e-3):
+    def check_equivariance(self, atol: float = 1e-5, rtol: float = 1e-3):
 
-        # device = self.cob_1.device
+        device = self.cob_1.device
 
         N = 40
-        points = jax.random.normal(key, (N, 3))
-        # points = torch.randn(N, 3, device=device)
+        points = torch.randn(N, 3, device=device)
         # radii = torch.norm(points, dim=-1).view(-1, 1)
         # points = points / radii
         # points[radii.view(-1) < 1e-3, :] = 0.
@@ -107,7 +99,7 @@ class HarmonicPolynomialR3Generator:
         for _ in range(10):
             g = self.G.sample()
 
-            sh_rot = self(points @ jnp.array(self.G.standard_representation()(g).T, dtype=float))
-            rot_sh = sh @ jnp.array(self.rho(g).T, dtype=float)
-            assert jnp.allclose(rot_sh, sh_rot, atol=atol, rtol=rtol), (rot_sh - sh_rot).abs().max().item()
+            sh_rot = self(points @ torch.tensor(self.G.standard_representation()(g).T, dtype=torch.float, device=device))
+            rot_sh = sh @ torch.tensor(self.rho(g).T, dtype=torch.float, device=device)
+            assert torch.allclose(rot_sh, sh_rot, atol=atol, rtol=rtol), (rot_sh - sh_rot).abs().max().item()
 

@@ -1,26 +1,26 @@
 
 from typing import List, Tuple, Any
 
-from escnn.gspaces import *
-from escnn.nn import FieldType
-from escnn.nn import GeometricTensor
+from escnn_jax.gspaces import *
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
 
 from ..equivariant_module import EquivariantModule
 
-# import torch
-# from torch.nn import BatchNorm3d, BatchNorm2d
+import torch
+from torch.nn import BatchNorm3d, BatchNorm2d
 
 from ..utils import indexes_from_labels
 
 __all__ = ["InnerBatchNorm"]
 
 
-# class BatchNorm4d(torch.nn.modules.batchnorm._BatchNorm):
-#     def _check_input_dim(self, input):
-#         if input.dim() != 6:
-#             raise ValueError(
-#                 "expected 6D input (got {}D input)".format(input.dim())
-#             )
+class BatchNorm4d(torch.nn.modules.batchnorm._BatchNorm):
+    def _check_input_dim(self, input):
+        if input.dim() != 6:
+            raise ValueError(
+                "expected 6D input (got {}D input)".format(input.dim())
+            )
 
 
 class InnerBatchNorm(EquivariantModule):
@@ -128,7 +128,7 @@ class InnerBatchNorm(EquivariantModule):
             batchnorm = getattr(self, f'batch_norm_[{s}]')
             batchnorm.reset_parameters()
 
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
         
         Args:
@@ -176,7 +176,7 @@ class InnerBatchNorm(EquivariantModule):
 
         return (b, self.out_type.size, *spatial_shape)
 
-    def check_equivariance(self, key, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
         # return super(InnerBatchNorm, self).check_equivariance(atol=atol, rtol=rtol)
         pass
 

@@ -1,10 +1,10 @@
 import unittest
 from unittest import TestCase
 
-import escnn.nn.init as init
-from escnn.nn import *
-from escnn.gspaces import *
-from escnn.group import *
+import escnn_jax.nn.init as init
+from escnn_jax.nn import *
+from escnn_jax.gspaces import *
+from escnn_jax.group import *
 
 import numpy as np
 

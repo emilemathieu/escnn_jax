@@ -1,8 +1,8 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import CyclicGroup
-from escnn.group import DihedralGroup
+from escnn_jax.group import CyclicGroup
+from escnn_jax.group import DihedralGroup
 
 import numpy as np
 import scipy.sparse as sparse

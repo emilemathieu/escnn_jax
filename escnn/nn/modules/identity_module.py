@@ -1,9 +1,9 @@
-from escnn.nn import GeometricTensor
-from escnn.nn import FieldType
+from escnn_jax.nn import GeometricTensor
+from escnn_jax.nn import FieldType
 from .equivariant_module import EquivariantModule
+import torch
 
 from typing import List, Tuple, Union, Any
-import equinox as eqx
 
 __all__ = ["IdentityModule"]
 
@@ -27,7 +27,7 @@ class IdentityModule(EquivariantModule):
         self.in_type = in_type
         self.out_type = in_type
         
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
         
         Returns the input tensor.
@@ -61,11 +61,6 @@ class IdentityModule(EquivariantModule):
             Only working with PyTorch >= 1.2
 
         """
-        # self = self.eval()
-        class Indentity(eqx.Module):
-
-            def __call__(seld, x):
-                return x
-        
-        return Indentity()
+        self.eval()
+        return torch.nn.Identity()
 

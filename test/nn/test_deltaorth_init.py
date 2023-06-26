@@ -2,10 +2,10 @@ import unittest
 from unittest import TestCase
 
 import numpy as np
-from escnn.nn import *
-from escnn.nn import init
-from escnn.gspaces import *
-from escnn.group import *
+from escnn_jax.nn import *
+from escnn_jax.nn import init
+from escnn_jax.gspaces import *
+from escnn_jax.group import *
 
 import torch
 

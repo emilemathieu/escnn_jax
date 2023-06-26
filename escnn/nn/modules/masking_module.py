@@ -1,43 +1,33 @@
 
-from escnn.nn import GeometricTensor
-from escnn.nn import FieldType
+from escnn_jax.nn import GeometricTensor
+from escnn_jax.nn import FieldType
 from .equivariant_module import EquivariantModule
 
 from typing import Tuple
 
-# import torch
-import jax
-import jax.numpy as jnp
-import numpy as np
-from jaxtyping import Array, PRNGKeyArray
+import torch
 
 import math
 
 __all__ = ["MaskModule"]
 
 
-def build_mask(s, margin=2, dtype=float):
+def build_mask(s, margin=2, dtype=torch.float32):
+    mask = torch.zeros(1, 1, s, s, dtype=dtype)
     c = (s-1) / 2
     t = (c - margin/100.*c)**2
     sig = 2.
-    # mask = jnp.zeros((1, 1, s, s), dtype=dtype)
-    # for x in range(s):
-    #     for y in range(s):
-    #         r = (x - c) ** 2 + (y - c) ** 2
-    #         if r > t:
-    #             mask = mask.at[..., x, y].set(math.exp((t - r)/sig**2))
-    #         else:
-    #             mask = mask.at[..., x, y].set(1.)
-    r = (jnp.arange(s)[None, ...] - c) ** 2 + (jnp.arange(s)[..., None] - c) ** 2
-    mask = jnp.where(r > t, jnp.exp((t - r)/sig**2), jnp.ones((s, s)))
-    mask = mask[None, None, ...].astype(dtype)
-    # assert jnp.allclose(mask, mask2) 
+    for x in range(s):
+        for y in range(s):
+            r = (x - c) ** 2 + (y - c) ** 2
+            if r > t:
+                mask[..., x, y] = math.exp((t - r)/sig**2)
+            else:
+                mask[..., x, y] = 1.
     return mask
 
 
 class MaskModule(EquivariantModule):
-    mask: Array
-    margin: float
 
     def __init__(self, in_type: FieldType, S: int, margin: float = 0.):
         r"""
@@ -70,12 +60,11 @@ class MaskModule(EquivariantModule):
         super(MaskModule, self).__init__()
 
         self.margin = margin
-        # self.mask = torch.nn.Parameter(build_mask(S, margin=margin), requires_grad=False)
-        self.mask = build_mask(S, margin=margin)
+        self.mask = torch.nn.Parameter(build_mask(S, margin=margin), requires_grad=False)
 
         self.in_type = self.out_type = in_type
 
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         assert input.type == self.in_type
 
         assert input.tensor.shape[2:] == self.mask.shape[2:]

@@ -1,18 +1,17 @@
 
-from escnn.group import *
-from escnn.gspaces import *
-from escnn.nn import FieldType
-from escnn.nn import GeometricTensor
+from escnn_jax.group import *
+from escnn_jax.gspaces import *
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
 
 from ..equivariant_module import EquivariantModule
 
-import jax
-import jax.numpy as jnp
-import numpy as np
-from jaxtyping import Array, PRNGKeyArray
+import torch
+import torch.nn.functional as F
 
 from typing import List, Tuple, Any
 
+import numpy as np
 
 __all__ = ["FourierPointwise", "FourierELU"]
 
@@ -32,8 +31,6 @@ def _build_kernel(G: Group, irrep: List[tuple]):
     
 
 class FourierPointwise(EquivariantModule):
-    A: Array
-    Ainv: Array
     
     def __init__(
             self,
@@ -42,6 +39,7 @@ class FourierPointwise(EquivariantModule):
             irreps: List,
             *grid_args,
             function: str = 'p_relu',
+            inplace: bool = True,
             out_irreps: List = None,
             normalize: bool = True,
             **grid_kwargs
@@ -115,13 +113,13 @@ class FourierPointwise(EquivariantModule):
 
         # retrieve the activation function to apply
         if function == 'p_relu':
-            self._function = jax.nn.relu
+            self._function = F.relu_ if inplace else F.relu
         elif function == 'p_elu':
-            self._function = jax.nn.elu
+            self._function = F.elu_ if inplace else F.elu
         elif function == 'p_sigmoid':
-            self._function = jax.nn.sigmoid
+            self._function = torch.sigmoid_ if inplace else F.sigmoid
         elif function == 'p_tanh':
-            self._function = jax.nn.tanh
+            self._function = torch.tanh_ if inplace else F.tanh
         else:
             raise ValueError('Function "{}" not recognized!'.format(function))
         
@@ -129,12 +127,12 @@ class FourierPointwise(EquivariantModule):
         assert kernel.shape[0] == self.rho.size
 
         if normalize:
-            kernel = kernel / jnp.linalg.norm(kernel)
+            kernel = kernel / np.linalg.norm(kernel)
         kernel = kernel.reshape(-1, 1)
         
         grid = G.grid(*grid_args, **grid_kwargs)
         
-        A = jnp.concatenate(
+        A = np.concatenate(
             [
                 self.rho(g) @ kernel
                 for g in grid
@@ -149,10 +147,10 @@ class FourierPointwise(EquivariantModule):
             assert kernel_out.shape[0] == rho_out_extended.size
 
             if normalize:
-                kernel_out = kernel_out / jnp.linalg.norm(kernel_out)
+                kernel_out = kernel_out / np.linalg.norm(kernel_out)
             kernel_out = kernel_out.reshape(-1, 1)
 
-            A_out = jnp.concatenate(
+            A_out = np.concatenate(
                 [
                     rho_out_extended(g) @ kernel_out
                     for g in grid
@@ -164,17 +162,15 @@ class FourierPointwise(EquivariantModule):
             rho_out_extended = self.rho_out
 
         eps = 1e-8
-        Ainv = jnp.linalg.inv(A_out.T @ A_out + eps * jnp.eye(rho_out_extended.size)) @ A_out.T
+        Ainv = np.linalg.inv(A_out.T @ A_out + eps * np.eye(rho_out_extended.size)) @ A_out.T
 
         if out_irreps is not None:
             Ainv = Ainv[:self.rho_out.size, :]
 
-        # self.register_buffer('A', torch.tensor(A, dtype=torch.get_default_dtype()))
-        # self.register_buffer('Ainv', torch.tensor(Ainv, dtype=torch.get_default_dtype()))
-        setattr(self, 'A', A)
-        setattr(self, 'Ainv', Ainv)
+        self.register_buffer('A', torch.tensor(A, dtype=torch.get_default_dtype()))
+        self.register_buffer('Ainv', torch.tensor(Ainv, dtype=torch.get_default_dtype()))
         
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
 
         Applies the pointwise activation function on the input fields
@@ -192,11 +188,11 @@ class FourierPointwise(EquivariantModule):
         shape = input.shape
         x_hat = input.tensor.view(shape[0], len(self.in_type), self.rho.size, *shape[2:])
         
-        x = jnp.einsum('bcf...,gf->bcg...', x_hat, self.A)
+        x = torch.einsum('bcf...,gf->bcg...', x_hat, self.A)
         
         y = self._function(x)
 
-        y_hat = jnp.einsum('bcg...,fg->bcf...', y, self.Ainv)
+        y_hat = torch.einsum('bcg...,fg->bcf...', y, self.Ainv)
 
         y_hat = y_hat.reshape(shape[0], self.out_type.size, *shape[2:])
 
@@ -212,12 +208,11 @@ class FourierPointwise(EquivariantModule):
 
         return (b, self.out_type.size, *spatial_shape)
 
-    def check_equivariance(self, key: PRNGKeyArray, atol: float = 1e-5, rtol: float = 2e-2, assert_raise: bool = True) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-5, rtol: float = 2e-2, assert_raise: bool = True) -> List[Tuple[Any, float]]:
     
         c = self.in_type.size
         B = 128
-        # x = torch.randn(B, c, *[3]*self.space.dimensionality)
-        x = jax.random.normal(key, (B, c, *[3]*self.space.dimensionality))
+        x = torch.randn(B, c, *[3]*self.space.dimensionality)
 
         # since we mostly use non-linearities like relu or elu, we make sure the average value of the features is
         # positive, such that, when we test inputs with only frequency 0 (or only low frequencies), the output is not
@@ -230,7 +225,7 @@ class FourierPointwise(EquivariantModule):
                 x[:, :, p] = x[:, :, p].abs()
             p+=irr.size
 
-        x = x.reshape(B, self.in_type.size, *[3]*self.space.dimensionality)
+        x = x.view(B, self.in_type.size, *[3]*self.space.dimensionality)
 
         errors = []
 
@@ -239,8 +234,8 @@ class FourierPointwise(EquivariantModule):
             
             el = self.space.fibergroup.sample()
     
-            x1 = GeometricTensor(x.copy(), self.in_type)
-            x2 = GeometricTensor(x.copy(), self.in_type).transform_fibers(el)
+            x1 = GeometricTensor(x.clone(), self.in_type)
+            x2 = GeometricTensor(x.clone(), self.in_type).transform_fibers(el)
 
             out1 = self(x1).transform_fibers(el)
             out2 = self(x2)

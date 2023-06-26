@@ -1,13 +1,13 @@
 import unittest
 from unittest import TestCase
 
-from escnn.group import CyclicGroup
-from escnn.group import DihedralGroup
-from escnn.group import O2
-from escnn.group import SO2
-from escnn.group import Representation
-from escnn.group import directsum
-from escnn.group import disentangle
+from escnn_jax.group import CyclicGroup
+from escnn_jax.group import DihedralGroup
+from escnn_jax.group import O2
+from escnn_jax.group import SO2
+from escnn_jax.group import Representation
+from escnn_jax.group import directsum
+from escnn_jax.group import disentangle
 
 import numpy as np
 

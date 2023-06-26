@@ -1,9 +1,9 @@
 import unittest
 from unittest import TestCase
 
-from escnn.gspaces import *
-from escnn.nn import *
-from escnn.group import directsum
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
+from escnn_jax.group import directsum
 
 import numpy as np
 

@@ -7,10 +7,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import escnn.nn.init as init
-from escnn.group import *
-from escnn.gspaces import *
-from escnn.nn import *
+import escnn_jax.nn.init as init
+from escnn_jax.group import *
+from escnn_jax.gspaces import *
+from escnn_jax.nn import *
 
 class TestConvolution(TestCase):
     

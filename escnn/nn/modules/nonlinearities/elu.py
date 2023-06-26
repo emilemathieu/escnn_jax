@@ -1,25 +1,23 @@
 
-from escnn.gspaces import *
-from escnn.nn import FieldType
-from escnn.nn import GeometricTensor
+from escnn_jax.gspaces import *
+from escnn_jax.nn import FieldType
+from escnn_jax.nn import GeometricTensor
 
 from ..equivariant_module import EquivariantModule
 
-# import torch
-# import torch.nn.functional as F
-import jax
-import jax.numpy as jnp
-import numpy as np
-from jaxtyping import Array, PRNGKeyArray
+import torch
+import torch.nn.functional as F
 
 from typing import List, Tuple, Any
+
+import numpy as np
 
 __all__ = ["ELU"]
 
 
 class ELU(EquivariantModule):
     
-    def __init__(self, in_type: FieldType, alpha: float = 1.0):
+    def __init__(self, in_type: FieldType, alpha: float = 1.0, inplace: bool = False):
         r"""
         
         Module that implements a pointwise ELU to every channel independently.
@@ -49,8 +47,10 @@ class ELU(EquivariantModule):
         
         # the representation in input is preserved
         self.out_type = in_type
+        
+        self._inplace = inplace
     
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def forward(self, input: GeometricTensor) -> GeometricTensor:
         r"""
 
         Applies ELU function on the input fields
@@ -64,11 +64,10 @@ class ELU(EquivariantModule):
         """
         
         assert input.type == self.in_type
-        # return GeometricTensor(
-        #     F.elu(input.tensor, alpha=self.alpha, inplace=self._inplace),
-        #     self.out_type, input.coords
-        # )
-        return GeometricTensor(jax.nn.elu(input.tensor), self.out_type, input.coords)
+        return GeometricTensor(
+            F.elu(input.tensor, alpha=self.alpha, inplace=self._inplace),
+            self.out_type, input.coords
+        )
 
     def evaluate_output_shape(self, input_shape: Tuple[int, ...]) -> Tuple[int, ...]:
 
@@ -80,12 +79,11 @@ class ELU(EquivariantModule):
 
         return (b, self.out_type.size, *spatial_shape)
 
-    def check_equivariance(self, key: PRNGKeyArray, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
+    def check_equivariance(self, atol: float = 1e-6, rtol: float = 1e-5) -> List[Tuple[Any, float]]:
         
         c = self.in_type.size
         
-        # x = torch.randn(3, c, 10, 10)
-        x = jax.random.normal(key, (3, c, 10, 10))
+        x = torch.randn(3, c, 10, 10)
         
         x = GeometricTensor(x, self.in_type)
         
@@ -99,7 +97,7 @@ class ELU(EquivariantModule):
             errs = np.abs(errs).reshape(-1)
             print(el, errs.max(), errs.mean(), errs.var())
             
-            assert jnp.allclose(out1.tensor, out2.tensor, atol=atol, rtol=rtol), \
+            assert torch.allclose(out1.tensor, out2.tensor, atol=atol, rtol=rtol), \
                 'The error found during equivariance check with element "{}" is too high: max = {}, mean = {} var ={}' \
                     .format(el, errs.max(), errs.mean(), errs.var())
             

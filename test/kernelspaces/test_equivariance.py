@@ -4,8 +4,8 @@ from unittest import TestCase
 import numpy as np
 import torch
 
-from escnn.group import *
-from escnn.kernels import *
+from escnn_jax.group import *
+from escnn_jax.kernels import *
 
 
 class TestSolutionsEquivariance(TestCase):
