@@ -1,4 +1,4 @@
-
+import inspect
 from escnn_jax.nn import GeometricTensor
 from .equivariant_module import EquivariantModule
 
@@ -72,7 +72,7 @@ class SequentialModule(EquivariantModule):
         for i in range(1, len(self._modules.values())):
             assert list(self._modules.values())[i-1].out_type == list(self._modules.values())[i].in_type
         
-    def __call__(self, input: GeometricTensor) -> GeometricTensor:
+    def __call__(self, input: GeometricTensor, state: eqx.nn.State = None) -> GeometricTensor:
         r"""
         
         Args:
@@ -86,11 +86,17 @@ class SequentialModule(EquivariantModule):
         assert input.type == self.in_type
         x = input
         for m in self._modules.values():
-            x = m(x)
+            if "state" in inspect.signature(m).parameters:
+                x, state = m(x, state)
+            else:
+                x = m(x)
 
         assert x.type == self.out_type
-        
-        return x
+
+        if state is not None:
+            return x, state
+        else:
+            return x
     
     def train(self, mode=True):
         new_modules = {}

@@ -24,8 +24,7 @@ The library is structured into four subpackages with different high-level featur
 - reproduce examples and baselines
     - [x] `mlp.ipynb`
         - [ ] appart for `IIDBatchNorm1d` module
-    - [ ] `introduction.ipynb`
-        - [ ] equivariance test
+    - [x] `introduction.ipynb`
     - [ ] `model.ipynb`
     - [ ] `octahedral_cnn.ipynb`
 - [x] mimic `requires_grad=false` for 'buffer' variables to avoid including them in `opt_state` and `grads`
@@ -35,72 +34,22 @@ The library is structured into four subpackages with different high-level featur
 - [ ] speed up module's `__init__` e.g. `nn.Linear` and `nn.R2Conv`
 - [ ] speed up module's `__call__` if possible?
 - add common missing `escnn.nn.modules`
-    - [ ] `InnerBatchNorm`
+    - [x] `InnerBatchNorm`
     - [x] `QuotientFourierELU`
-    - [ ] `IIDBatchNorm1d`
     - [ ] `R3Conv`
+    - [ ] `IIDBatchNorm1d`
     - [ ] `IIDBatchNorm3d`
     - [ ] `PointwiseAvgPoolAntialiased3D`
+    - [x] `PointwiseAvgPool`
     - [x] `NormNonLinearity`
     - [x] `TensorProductModule`
 - [ ] better `__repr__` for `EquivariantModule` and `eqx.nn.Module` more generally
 - [ ] make sure that tests pass for implemented modules and kernels
+- [ ] Bug? `InnerBatchNorm.eval()` without training returns high values
 
 ### Nice to have
 - [ ] add support for [`haiku`](https://dm-haiku.readthedocs.io/en/latest/) / [`flax`](https://flax.readthedocs.io/en/latest/) under `escnn.nn.haiku` / `escnn.nn.flax`
 - [ ] `jaxlinop` for `Representation` class akin to [`emlp`](https://emlp.readthedocs.io), and more generally rewrite `escnn_jax.group` in `jax`?
-- [ ] init function `deltaorthonormal_init`
-- add missing `escnn.nn.modules`
-    - [ ] `BranchingModule`
-    - [ ] `MergeModule`
-    - [ ] `MultipleModule`
-    - [ ] `R3Conv`
-    - [ ] `R2ConvTransposed`
-    - [ ] `R3ConvTransposed`
-    - [ ] `R3IcoConv`
-    - [ ] `R3IcoConvTransposed`
-    - [ ] `R2PointConv`, `R3PointConv`
-    - [ ] `R2Upsampling`
-    - [ ] `R3Upsampling`
-    - [ ] `GatedNonLinearity1`
-    - [ ] `GatedNonLinearity2`
-    - [ ] `GatedNonLinearityUniform`
-    - [ ] `InducedGatedNonLinearity1`
-    - [ ] `NormNonLinearity`
-    - [ ] `InducedNormNonLinearity`
-    - [ ] `PointwiseNonLinearity`
-    - [ ] `ConcatenatedNonLinearity`
-    - [ ] `VectorFieldNonLinearity`
-    - [ ] `QuotientFourierPointwise`
-    - [ ] `QuotientFourierELU`
-    - [ ] `TensorProductModule`
-    - [ ] `ReshuffleModule`
-    - [ ] `NormMaxPool`
-    - [ ] `PointwiseMaxPool2D` `PointwiseMaxPool`
-    - [ ] `PointwiseMaxPool3D`
-    - [ ] `PointwiseMaxPoolAntialiased2D` `PointwiseMaxPoolAntialiased`
-    - [ ] `PointwiseMaxPoolAntialiased3D`
-    - [ ] `PointwiseAvgPool3D`
-    - [ ] `PointwiseAvgPoolAntialiased3D`
-    - [ ] `PointwiseAdaptiveAvgPool2D` `PointwiseAdaptiveAvgPool`
-    - [ ] `PointwiseAdaptiveAvgPool3D`
-    - [ ] `PointwiseAdaptiveMaxPool2D` `PointwiseAdaptiveMaxPool`
-    - [ ] `PointwiseAdaptiveMaxPool3D`
-    - [ ] `MaxPoolChannels`
-    - [ ] `NormPool`
-    - [ ] `InducedNormPool`
-    - [ ] `InnerBatchNorm`
-    - [ ] `NormBatchNorm`
-    - [ ] `InducedNormBatchNorm`
-    - [ ] `GNormBatchNorm`
-    - [ ] `IIDBatchNorm1d`
-    - [ ] `IIDBatchNorm2d`
-    - [ ] `IIDBatchNorm3d`
-    - [ ] `RestrictionModule`
-    - [ ] `DisentangleModule`
-    - [ ] `FieldDropout`
-    - [ ] `PointwiseDropout`
-    - [ ] `HarmonicPolynomialR3`
 
 ## Getting Started
 
