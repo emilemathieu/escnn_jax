@@ -9,7 +9,7 @@ __all__ = [
     "__license__",
 ]
 
-__title__ = "escnn_jax"
+__title__ = "escnn"
 __summary__ = "E(n)-Equivariant CNNs Library for Jax"
 __url__ = 'https://github.com/QUVA-Lab/escnn'
 __version__ = "1.0.8"

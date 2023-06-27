@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 about = {}
-with open("escnn/__about__.py") as fp:
+with open("escnn_jax/__about__.py") as fp:
     exec(fp.read(), about)
 
 install_requires = [

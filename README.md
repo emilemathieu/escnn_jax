@@ -22,14 +22,19 @@ The library is structured into four subpackages with different high-level featur
 
 ### Priority
 - reproduce examples and baselines
-    - [ ] `mlp.ipynb`
+    - [x] `mlp.ipynb`
+        - [ ] appart for `IIDBatchNorm1d` module
     - [ ] `introduction.ipynb`
+        - [ ] equivariance test
     - [ ] `model.ipynb`
     - [ ] `octahedral_cnn.ipynb`
-- [ ] mimic `requires_grad=false` for 'buffer' variables to avoid including them in `opt_state` and `grads`
+- [x] mimic `requires_grad=false` for 'buffer' variables to avoid including them in `opt_state` and `grads`
+    - added in `EquivariantModule` the methods `set_buffer` and `get_buffer` which wrap the variable in `lax.stop_gradient`
+    - added in `EquivariantModule` the methods `set_parameter` and `get_parameter` which wrap the Array a custom type `escn_jax.nn.ParameterArray` which can later be used to filter the parameters
 - [ ] enhance `model.eval()` behaviour; make `EquivariantModule.eval` recursively call submodules?
+- [ ] speed up module's `__init__` e.g. `nn.Linear` and `nn.R2Conv`
+- [ ] speed up module's `__call__` if possible?
 - add common missing `escnn.nn.modules`
-- [ ] speed up module's `__init__` e.g. `nn.Linear`
     - [ ] `InnerBatchNorm`
     - [x] `QuotientFourierELU`
     - [ ] `IIDBatchNorm1d`
@@ -38,6 +43,8 @@ The library is structured into four subpackages with different high-level featur
     - [ ] `PointwiseAvgPoolAntialiased3D`
     - [x] `NormNonLinearity`
     - [x] `TensorProductModule`
+- [ ] better `__repr__` for `EquivariantModule` and `eqx.nn.Module` more generally
+- [ ] make sure that tests pass for implemented modules and kernels
 
 ### Nice to have
 - [ ] add support for [`haiku`](https://dm-haiku.readthedocs.io/en/latest/) / [`flax`](https://flax.readthedocs.io/en/latest/) under `escnn.nn.haiku` / `escnn.nn.flax`
