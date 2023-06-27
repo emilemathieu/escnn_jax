@@ -191,7 +191,9 @@ class R2Conv(_RdConv):
             # by default, the weights are initialized with a generalized form of He's weight initialization
             # escnn.nn.init.generalized_he_init(self.weights.data, self.basisexpansion)
             # self.weights = init.generalized_he_init(key, self.weights, self.basisexpansion)
-            self.weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
+            weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
+            self.register_parameter('weights', weights)
+
 
     def _build_kernel_basis(self, in_repr: Representation, out_repr: Representation) -> KernelBasis:
         return self.space.build_kernel_basis(in_repr, out_repr, self._sigma, self._rings,

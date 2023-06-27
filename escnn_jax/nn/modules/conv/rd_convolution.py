@@ -236,9 +236,9 @@ class _RdConv(EquivariantModule, ABC):
                 # self.register_buffer("bias_expansion", bias_expansion)
                 # self.bias = Parameter(torch.zeros(trivials), requires_grad=True)
                 # self.register_buffer("expanded_bias", torch.zeros(out_type.size))
-                setattr(self, "bias_expansion", bias_expansion)
-                self.bias = jnp.zeros((trivials))
-                setattr(self, "expanded_bias", jnp.zeros((out_type.size)))
+                self.register_buffer("bias_expansion", bias_expansion)
+                self.register_parameter("bias",  jnp.zeros((trivials)))
+                self.register_buffer("expanded_bias", jnp.zeros((out_type.size)))
             else:
                 self.bias = None
                 self.expanded_bias = None
@@ -267,12 +267,8 @@ class _RdConv(EquivariantModule, ABC):
                 for a larger basis.
             ''')
         
-        # self.weights = Parameter(torch.zeros(self.basisexpansion.dimension()), requires_grad=True)
-        # self.weights = jnp.zeros(self.basisexpansion.dimension())
-        
         filter_size = (out_type.size, in_type.size) + (kernel_size,) * d
-        # self.register_buffer("filter", torch.zeros(*filter_size))
-        setattr(self, "filter", jnp.zeros(filter_size))
+        self.register_buffer("filter", jnp.zeros(filter_size))
     
     @abstractmethod
     def _build_kernel_basis(self, in_repr: Representation, out_repr: Representation) -> KernelBasis:
@@ -302,14 +298,15 @@ class _RdConv(EquivariantModule, ABC):
             the expanded filter and bias
 
         """
-        _filter = self.basisexpansion(self.weights)
+        _filter = self.basisexpansion(self.get_parameter("weights"))
         # _filter = _filter.reshape(_filter.shape[0], _filter.shape[1], *(self.kernel_size,)*self.d)
         _filter = _filter.reshape(_filter.shape[0], _filter.shape[1], *self.kernel_size)
         
-        if self.bias is None:
+        _bias = self.get_parameter("bias")
+        if _bias is None:
             _bias = None
         else:
-            _bias = self.bias_expansion @ self.bias
+            _bias = self.bias_expansion @ _bias
             
         return _filter, _bias
     
@@ -444,7 +441,7 @@ class _RdConv(EquivariantModule, ABC):
             s += ', dilation={dilation}'
         if self.groups != 1:
             s += ', groups={groups}'
-        if self.bias is None:
+        if self.get_parameter("bias") is None:
             s += ', bias=False'
         return s.format(**self.__dict__)
 

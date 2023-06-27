@@ -8,7 +8,7 @@ import numpy as np
 from jaxtyping import Array, PRNGKeyArray
 
 from escnn_jax.gspaces import GSpace, GSpace0D
-from escnn_jax.nn import FieldType, GeometricTensor, init
+from escnn_jax.nn import FieldType, GeometricTensor, init, ParameterArray
 from escnn_jax.nn.modules.basismanager import BasisManager, BlocksBasisExpansion
 
 from .equivariant_module import EquivariantModule
@@ -17,8 +17,8 @@ __all__ = ["Linear"]
 
 
 class Linear(EquivariantModule):
-    weights: Array
-    bias: Optional[Array]
+    weights: ParameterArray
+    bias: Optional[ParameterArray]
     bias_expansion: Optional[Array]
     expanded_bias: Optional[Array]
     matrix: Array
@@ -161,7 +161,7 @@ class Linear(EquivariantModule):
                 # self.register_buffer("bias_expansion", bias_expansion)
                 self.bias_expansion = bias_expansion
                 # self.bias = Parameter(torch.zeros(trivials), requires_grad=True)
-                self.bias = jnp.zeros(trivials)
+                self.register_parameter('bias', jnp.zeros(trivials))
                 # self.register_buffer("expanded_bias", torch.zeros(out_type.size))
                 self.expanded_bias = jnp.zeros((out_type.size))
             else:
@@ -194,9 +194,10 @@ class Linear(EquivariantModule):
         if initialize:
             # by default, the weights are initialized with a generalized form of He's weight initialization
             # init.generalized_he_init(self.weights.data, self.basisexpansion)
-            self.weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
+            weights = init.generalized_he_init(key, (self.basisexpansion.dimension(),), self.basisexpansion)
+            self.register_parameter('weights', weights)
 
-    def __call__(self, input: GeometricTensor,):
+    def __call__(self, input: GeometricTensor):
         r"""
         Convolve the input with the expanded matrix and bias.
         
@@ -250,13 +251,15 @@ class Linear(EquivariantModule):
             the expanded matrix and bias
 
         """
-        _matrix = self.basisexpansion(self.weights)
+        # _matrix = self.basisexpansion(self.weights)
+        _matrix = self.basisexpansion(self.get_parameter("weights"))
         _matrix = _matrix.reshape(_matrix.shape[0], _matrix.shape[1])
     
-        if self.bias is None:
+        _bias = self.get_parameter("bias")
+        if _bias is None:
             _bias = None
         else:
-            _bias = self.bias_expansion @ self.bias
+            _bias = self.bias_expansion @ _bias
     
         return _matrix, _bias
 
@@ -332,7 +335,7 @@ class Linear(EquivariantModule):
         _matrix = self.matrix
         _bias = self.expanded_bias
         
-        has_bias = self.bias is not None
+        has_bias = self.get_parameter("bias") is not None
 
         # build the PyTorch module
         # linear = torch.nn.Linear(self.in_type.size, self.out_type.size, bias=has_bias)

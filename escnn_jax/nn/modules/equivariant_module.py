@@ -1,6 +1,6 @@
 
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Dict
 
 import equinox as eqx
 import jax
@@ -9,7 +9,7 @@ import numpy as np
 from jaxtyping import PRNGKeyArray
 
 from escnn_jax.gspaces import GSpace, GSpace0D
-from escnn_jax.nn import FieldType, GeometricTensor
+from escnn_jax.nn import FieldType, GeometricTensor, ParameterArray
 
 __all__ = ["EquivariantModule"]
 
@@ -65,6 +65,29 @@ class EquivariantModule(eqx.Module, ABC):
 
     def register_buffer(self, key, value):
         setattr(self, key, value)
+        # self.buffer[]
+        # setattr(self, key, property(classmethod)(lambda self: jax.lax.stop_gradient(getattr(self, key))))
+
+    def get_buffer(self, key):
+        assert hasattr(self, key)
+        return jax.lax.stop_gradient(getattr(self, key))
+
+    def register_parameter(self, key, value):
+        setattr(self, key, ParameterArray(value))
+
+    def get_parameter(self, key):
+        assert hasattr(self, key)
+        param = getattr(self, key)
+        # assert isinstance(param, ParameterArray)
+        if isinstance(param, ParameterArray):
+            return param.array
+        else:
+            return param
+
+    @property
+    def is_param(self):
+        is_param = lambda x: isinstance(x, ParameterArray)
+        return is_param
 
     def eval(self):
         return self.train(False)
