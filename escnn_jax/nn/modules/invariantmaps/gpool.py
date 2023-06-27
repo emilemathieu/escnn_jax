@@ -111,7 +111,6 @@ class GroupPooling(EquivariantModule):
 
         # output = torch.empty(self.evaluate_output_shape(input.shape), device=input.device, dtype=torch.float)
         output = jnp.empty(self.evaluate_output_shape(input.shape), dtype=float) # device=input.device,
-        print("output", output.shape)
         
         for s, contiguous in self._contiguous.items():
             
@@ -135,7 +134,6 @@ class GroupPooling(EquivariantModule):
             # if contiguous:
             #     output = output.at[:, out_indices[0]:out_indices[1], ...].set(max_activations)
             # else:
-            print("out_indices", out_indices)
             output = output.at[:, out_indices, ...].set(max_activations)
         
         # wrap the result in a GeometricTensor

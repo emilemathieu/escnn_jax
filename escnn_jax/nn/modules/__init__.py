@@ -61,7 +61,7 @@ from .invariantmaps import GroupPooling
 # from .invariantmaps import NormPool
 # from .invariantmaps import InducedNormPool
 
-# from .batchnormalization import InnerBatchNorm
+from .batchnormalization import InnerBatchNorm
 # from .batchnormalization import NormBatchNorm
 # from .batchnormalization import InducedNormBatchNorm
 # from .batchnormalization import GNormBatchNorm
@@ -130,7 +130,7 @@ __all__ = [
     # "MaxPoolChannels",
     # "NormPool",
     # "InducedNormPool",
-    # "InnerBatchNorm",
+    "InnerBatchNorm",
     # "NormBatchNorm",
     # "InducedNormBatchNorm",
     # "GNormBatchNorm",
