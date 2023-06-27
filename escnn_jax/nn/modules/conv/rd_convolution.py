@@ -342,7 +342,7 @@ class _RdConv(EquivariantModule, ABC):
                 rhs_dilation=self.dilation,
                 feature_group_count=self.groups,
             )
-            if self.use_bias:
+            if _bias is not None:
                 _bias = jnp.expand_dims(_bias, axis=tuple(range(-1, -(self.d + 1), -1)))
                 output = jax.vmap(lambda x: x + _bias)(output)
         else:

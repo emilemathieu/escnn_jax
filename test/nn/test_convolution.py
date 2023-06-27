@@ -10,60 +10,91 @@ import numpy as np
 
 import escnn_jax.nn.init as init
 from escnn_jax.gspaces import *
+from escnn_jax.group import *
 from escnn_jax.nn import *
 from escnn_jax.nn.modules.conv import R2Conv
 
 
 class TestConvolution(TestCase):
     
-    # def test_cyclic(self):
-    #     N = 8
-    #     g = rot2dOnR2(N)
-        
-    #     r1 = FieldType(g, list(g.representations.values()))
-    #     r2 = FieldType(g, list(g.representations.values()) * 2)
-    #     # r1 = FieldType(g, [g.trivial_repr])
-    #     # r2 = FieldType(g, [g.regular_repr])
-        
-    #     s = 7
-    #     sigma = None
-    #     # fco = lambda r: 1. * r * np.pi
-    #     fco = None
-        
-    #     cl = R2Conv(r1, r2, s,
-    #                 sigma=sigma,
-    #                 frequencies_cutoff=fco,
-    #                 bias=True)
-    #     cl.bias.data = 20*torch.randn_like(cl.bias.data)
+    def test_cyclic(self):
+        key = jax.random.PRNGKey(0)
+        key, w_key, e_key = jax.random.split(key, 3)
 
-    #     for _ in range(1):
-    #         init.generalized_he_init(cl.weights.data, cl.basisexpansion)
-    #         cl.eval()
-    #         cl.check_equivariance()
+        # N = 8
+        N = 4
+        G = rot2dOnR2(N)
         
-    #     cl.train()
-    #     for _ in range(1):
-    #         cl.check_equivariance()
+        # r1 = FieldType(g, list(g.representations.values()))
+        # r2 = FieldType(g, list(g.representations.values()) * 2)
+        r1 = FieldType(G, [G.trivial_repr])
+        # r2 = FieldType(g, [g.trivial_repr])
+        r2 = FieldType(G, [G.regular_repr])
+
+        cl = R2Conv(r1, r2, 3,
+                    use_bias=False,
+                    key = w_key
+                    )
         
-    #     cl.eval()
+        # print(cl.weights.shape)
+        # print(cl._basisexpansion(cl.weights).shape)
         
-    #     for _ in range(5):
-    #         init.generalized_he_init(cl.weights.data, cl.basisexpansion)
-    #         cl.eval()
-    #         filter = cl.filter.clone()
-    #         cl.check_equivariance()
-    #         self.assertTrue(torch.allclose(filter, cl.filter))
+        # # for i in range(8):
+        # #     print(i)
+        # #     key, w_key, e_key = jax.random.split(key, 3)
+        # #     weights = init.generalized_he_init(key, cl.weights.shape, cl.basisexpansion)
+        # #     cl = eqx.tree_at(lambda m: m.weights, cl, replace=weights)
+        # # cl.check_equivariance(e_key)
+        x = jax.random.normal(e_key, (4, 1, 32, 32))
+        x = r1(x)
+
+        g = CyclicGroup(N).elements[1]
+        print("g", g)
+        x_transformed = x.transform(g)
+        y_from_x_transformed = cl(x_transformed)
+        y = cl(x)
+        y_transformed_from_x = y.transform(g)
+        assert jnp.allclose(y_from_x_transformed.tensor, y_transformed_from_x.tensor, rtol=1e-5, atol=1e-5)
+            
+        # s = 7
+        # sigma = None
+        # # fco = lambda r: 1. * r * np.pi
+        # fco = None
+        
+        # cl = R2Conv(r1, r2, s,
+        #             sigma=sigma,
+        #             frequencies_cutoff=fco,
+        #             bias=True)
+        # cl.bias.data = 20*torch.randn_like(cl.bias.data)
+
+        # for _ in range(1):
+        #     init.generalized_he_init(cl.weights.data, cl.basisexpansion)
+        #     cl.eval()
+        #     cl.check_equivariance()
+        
+        # cl.train()
+        # for _ in range(1):
+        #     cl.check_equivariance()
+        
+        # cl.eval()
+        
+        # for _ in range(5):
+        #     init.generalized_he_init(cl.weights.data, cl.basisexpansion)
+        #     cl.eval()
+        #     filter = cl.filter.clone()
+        #     cl.check_equivariance()
+        #     self.assertTrue(torch.allclose(filter, cl.filter))
 
     def test_so2(self):
         key = jax.random.PRNGKey(0)
         N = 7
         g = rot2dOnR2(-1, N)
 
-        # reprs = [g.irrep(*irr) for irr in g.fibergroup.bl_irreps(3)] + [g.fibergroup.bl_regular_representation(3)]
+        reprs = [g.irrep(*irr) for irr in g.fibergroup.bl_irreps(3)] + [g.fibergroup.bl_regular_representation(3)]
         # reprs = [g.irrep(*irr) for irr in g.fibergroup.bl_irreps(1)]
-        # r1 = r2 = g.type(*reprs)
-        r1 = g.type(*[g.irrep(*irr) for irr in g.fibergroup.bl_irreps(2)])
-        r2 = g.type(*[g.irrep(*irr) for irr in g.fibergroup.bl_irreps(0)])
+        r1 = r2 = g.type(*reprs)
+        # r1 = g.type(*[g.irrep(*irr) for irr in g.fibergroup.bl_irreps(2)])
+        # r2 = g.type(*[g.irrep(*irr) for irr in g.fibergroup.bl_irreps(0)])
 
         key, w_key, e_key = jax.random.split(key, 3)
         s = 7
@@ -82,37 +113,37 @@ class TestConvolution(TestCase):
         for i in range(8):
             print(i)
             key, w_key, e_key = jax.random.split(key, 3)
-            weights = init.generalized_he_init(key, cl.weights, cl.basisexpansion)
+            weights = init.generalized_he_init(key, cl.weights.shape, cl.basisexpansion)
             cl = eqx.tree_at(lambda m: m.weights, cl, replace=weights)
             cl.check_equivariance(e_key)
 
-    # def test_dihedral(self):
-    #     N = 8
-    #     g = flipRot2dOnR2(N, axis=np.pi/3)
+    def test_dihedral(self):
+        N = 8
+        g = flipRot2dOnR2(N, axis=np.pi/3)
 
-    #     r1 = FieldType(g, list(g.representations.values()))
-    #     r2 = FieldType(g, list(g.representations.values()))
-    #     # r1 = FieldType(g, [g.trivial_repr])
-    #     # r2 = FieldType(g, [g.fibergroup.irrep(1, 0)])
-    #     # r2 = FieldType(g, [irr for irr in g.fibergroup.irreps.values() if irr.size == 1])
-    #     # r2 = FieldType(g, [g.regular_repr])
+        r1 = FieldType(g, list(g.representations.values()))
+        r2 = FieldType(g, list(g.representations.values()))
+        # r1 = FieldType(g, [g.trivial_repr])
+        # r2 = FieldType(g, [g.fibergroup.irrep(1, 0)])
+        # r2 = FieldType(g, [irr for irr in g.fibergroup.irreps.values() if irr.size == 1])
+        # r2 = FieldType(g, [g.regular_repr])
     
-    #     s = 7
-    #     # sigma = 0.6
-    #     # fco = lambda r: 1. * r * np.pi
-    #     # fco = lambda r: 2 * r
-    #     sigma = None
-    #     fco = None
-    #     cl = R2Conv(r1, r2, s,
-    #                 sigma=sigma,
-    #                 frequencies_cutoff=fco,
-    #                 bias=True)
+        s = 7
+        # sigma = 0.6
+        # fco = lambda r: 1. * r * np.pi
+        # fco = lambda r: 2 * r
+        sigma = None
+        fco = None
+        cl = R2Conv(r1, r2, s,
+                    sigma=sigma,
+                    frequencies_cutoff=fco,
+                    bias=True)
 
-    #     for _ in range(8):
-    #         # cl.basisexpansion._init_weights()
-    #         init.generalized_he_init(cl.weights.data, cl.basisexpansion)
-    #         cl.eval()
-    #         cl.check_equivariance()
+        for _ in range(8):
+            # cl.basisexpansion._init_weights()
+            init.generalized_he_init(cl.weights.data, cl.basisexpansion)
+            cl.eval()
+            cl.check_equivariance()
 
     # def test_o2(self):
     #     N = 3
