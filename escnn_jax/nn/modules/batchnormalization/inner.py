@@ -1,5 +1,5 @@
 
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Union, Hashable, Sequence
 
 from escnn_jax.gspaces import *
 from escnn_jax.nn import FieldType
@@ -30,9 +30,13 @@ __all__ = ["InnerBatchNorm"]
 
 class InnerBatchNorm(EquivariantModule):
     indices: Dict[int, Array] = eqx.field(static=True)
-    batchnorm: Dict[int, Array] = eqx.field(static=True)
+    # batchnorm: Dict[int, eqx.Module] = eqx.field(static=True)
+    batchnorm: Dict[int, eqx.Module]
     _contiguous: Dict[int, bool] = eqx.field(static=True)
     _nfields: Dict[int, int] = eqx.field(static=True)
+    affine: bool = eqx.field(static=True)
+    eps: float = eqx.field(static=True)
+    momentum: float = eqx.field(static=True)
     inference: bool
     
     def __init__(self,
@@ -41,7 +45,7 @@ class InnerBatchNorm(EquivariantModule):
                  momentum: float = 0.1,
                  affine: bool = True,
                  track_running_stats: bool = True,
-                 inference: bool = False
+                 inference: bool = False,
                  ):
         r"""
         
@@ -82,7 +86,7 @@ class InnerBatchNorm(EquivariantModule):
         self.affine = affine
         self.eps = eps
         self.momentum = momentum
-        self.track_running_stats = track_running_stats
+        # self.track_running_stats = track_running_stats
         
         # group fields by their size and
         #   - check if fields with the same size are contiguous
@@ -114,36 +118,44 @@ class InnerBatchNorm(EquivariantModule):
             # self.register_buffer('indices_{}'.format(s), _indices[s])
             self.indices = _indices
 
-        if self.in_type.gspace.dimensionality in [0, 1]:
-            bnorm_class = torch.nn.BatchNorm2d
-        elif self.in_type.gspace.dimensionality == 2:
-            bnorm_class = torch.nn.BatchNorm3d
-        elif self.in_type.gspace.dimensionality == 3:
-            bnorm_class = BatchNorm4d
-        else:
-            raise NotImplementedError
+        # if self.in_type.gspace.dimensionality in [0, 1]:
+        #     bnorm_class = torch.nn.BatchNorm2d
+        # elif self.in_type.gspace.dimensionality == 2:
+        #     bnorm_class = torch.nn.BatchNorm3d
+        # elif self.in_type.gspace.dimensionality == 3:
+        #     bnorm_class = BatchNorm4d
+        # else:
+        #     raise NotImplementedError
+        bnorm_class = eqx.nn.BatchNorm
 
         self.batchnorm = {} 
         for s in _indices.keys():
+            # _batchnorm = bnorm_class(
+            #     self._nfields[s],
+            #     self.eps,
+            #     self.momentum,
+            #     affine=self.affine,
+            #     track_running_stats=self.track_running_stats
+            # )
             _batchnorm = bnorm_class(
                 self._nfields[s],
+                "batch",
                 self.eps,
+                self.affine,
                 self.momentum,
-                affine=self.affine,
-                track_running_stats=self.track_running_stats
             )
             # self.add_module('batch_norm_[{}]'.format(s), _batchnorm)
             self.batchnorm[s] = _batchnorm
 
-    def reset_running_stats(self):
-        for s, contiguous in self._contiguous.items():
-            batchnorm = getattr(self, f'batch_norm_[{s}]')
-            batchnorm.reset_running_stats()
+    # def reset_running_stats(self):
+    #     for s, contiguous in self._contiguous.items():
+    #         batchnorm = getattr(self, f'batch_norm_[{s}]')
+    #         batchnorm.reset_running_stats()
 
-    def reset_parameters(self):
-        for s, contiguous in self._contiguous.items():
-            batchnorm = getattr(self, f'batch_norm_[{s}]')
-            batchnorm.reset_parameters()
+    # def reset_parameters(self):
+    #     for s, contiguous in self._contiguous.items():
+    #         batchnorm = getattr(self, f'batch_norm_[{s}]')
+    #         batchnorm.reset_parameters()
 
     def __call__(self, input: GeometricTensor, state: eqx.nn.State) -> GeometricTensor:
         r"""
@@ -162,7 +174,6 @@ class InnerBatchNorm(EquivariantModule):
         shape = input.tensor.shape[2:]
 
         output = jnp.empty_like(input.tensor)
-        print("output", output.shape)
         
         # iterate through all field sizes
         for s, contiguous in self._contiguous.items():
@@ -182,14 +193,14 @@ class InnerBatchNorm(EquivariantModule):
             #     output[:, indices, ...] = batchnorm(
             #         input.tensor[:, indices].view(b, -1, s, *shape)
             #     ).view(b, -1, *shape)
-            el = batchnorm(
-                    input.tensor[:, indices].reshape(b, -1, s, *shape)
-                ).reshape(b, -1, *shape)
-            print("indices", indices)
+            el, state = jax.vmap(batchnorm, axis_name="batch", in_axes=(0, None), out_axes=(0, None))(
+                    input.tensor[:, indices].reshape(b, -1, s, *shape), state
+                )
+            el = el.reshape(b, -1, *shape)
             output = output.at[:, indices, ...].set(el)
 
         # wrap the result in a GeometricTensor
-        return GeometricTensor(output, self.out_type, input.coords)
+        return GeometricTensor(output, self.out_type, input.coords), state
 
     def evaluate_output_shape(self, input_shape: Tuple[int, ...]) -> Tuple[int, ...]:
 
@@ -275,7 +286,8 @@ class InnerBatchNorm(EquivariantModule):
         if extra_repr:
             extra_lines = extra_repr.split('\n')
     
-        main_str = self._get_name() + '('
+        # main_str = self._get_name() + '('
+        main_str = '('
         if len(extra_lines) == 1:
             main_str += extra_lines[0]
         else:
@@ -285,6 +297,7 @@ class InnerBatchNorm(EquivariantModule):
         return main_str
 
     def extra_repr(self):
-        return '{in_type}, eps={eps}, momentum={momentum}, affine={affine}, track_running_stats={track_running_stats}'\
+        # return '{in_type}, eps={eps}, momentum={momentum}, affine={affine}, track_running_stats={track_running_stats}'\
+        return '{in_type}, eps={eps}, momentum={momentum}, affine={affine}'\
             .format(**self.__dict__)
 
