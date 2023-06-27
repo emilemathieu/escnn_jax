@@ -40,17 +40,17 @@ __all__ = [
     'SteerableKernelBasis',
     # "IrrepBasis",
     "WignerEckartBasis",
-    # "RestrictedWignerEckartBasis",
-    # # Steerable Filters Bases
-    # 'SteerableFiltersBasis',
+    "RestrictedWignerEckartBasis",
+    # Steerable Filters Bases
+    'SteerableFiltersBasis',
     'PointBasis',
     "SphericalShellsBasis",
     "CircularShellsBasis",
     'GaussianRadialProfile',
-    "SparseOrbitBasis",
-    "SparseOrbitBasisWithIcosahedralSymmetry",
+    # "SparseOrbitBasis",
+    # "SparseOrbitBasisWithIcosahedralSymmetry",
     # # Other useful modules
-    "HarmonicPolynomialR3Generator",
+    # "HarmonicPolynomialR3Generator",
     # # Generic group acting on R^0
     "kernels_on_point",
     # # R2 bases

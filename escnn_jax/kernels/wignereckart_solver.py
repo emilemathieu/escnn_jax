@@ -395,7 +395,7 @@ class RestrictedWignerEckartBasis(IrrepBasis):
         for b, _j in enumerate(self.js):
             # self.register_buffer(f'coeff_{b}', _coeffs[_j])
             # setattr(self, f'coeff_{b}', _coeffs[_j])
-            self.coeffs[b] = coeff
+            self.coeffs[b] = _coeffs[_j]
 
     def coeff(self, idx: int) -> Array:
         # return getattr(self, f'coeff_{idx}')
@@ -427,8 +427,7 @@ class RestrictedWignerEckartBasis(IrrepBasis):
             #     coeff, Ys,
             # )
             out[j] = jnp.einsum(
-                # 'Nnksm,miS->NnksiS',
-                'kspnm,qim->qksipn',
+                'dpnm,sim->sdipn',
                 coeff, Ys,
             ).reshape((points[j].shape[0], self.dim_harmonic(j), self.shape[0], self.shape[1]))
 

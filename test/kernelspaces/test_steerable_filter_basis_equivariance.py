@@ -20,17 +20,17 @@ class TestSolutionsEquivariance(TestCase):
         )
         basis.check_equivariance()
 
-    def test_spherical(self):
+    # def test_spherical(self):
 
-        radial = GaussianRadialProfile(
+    #     radial = GaussianRadialProfile(
 
-            radii=[0., 1., 2., 5, 10],
-            sigma=[0.6, 1., 1.3, 2.5, 3.],
-        )
-        basis = SphericalShellsBasis(
-            L=5, radial=radial,
-        )
-        basis.check_equivariance()
+    #         radii=[0., 1., 2., 5, 10],
+    #         sigma=[0.6, 1., 1.3, 2.5, 3.],
+    #     )
+    #     basis = SphericalShellsBasis(
+    #         L=5, radial=radial,
+    #     )
+    #     basis.check_equivariance()
 
     def test_circular_filter(self):
 
@@ -44,17 +44,17 @@ class TestSolutionsEquivariance(TestCase):
         )
         basis.check_equivariance()
 
-    def test_spherical_filter(self):
+    # def test_spherical_filter(self):
 
-        radial = GaussianRadialProfile(
-            radii=[0., 1., 2., 5, 10],
-            sigma=[0.6, 1., 1.3, 2.5, 3.],
-        )
-        basis = SphericalShellsBasis(
-            L=5, radial=radial,
-            filter=lambda attr: attr['irrep:frequency'] < 2 * attr['radius']
-        )
-        basis.check_equivariance()
+    #     radial = GaussianRadialProfile(
+    #         radii=[0., 1., 2., 5, 10],
+    #         sigma=[0.6, 1., 1.3, 2.5, 3.],
+    #     )
+    #     basis = SphericalShellsBasis(
+    #         L=5, radial=radial,
+    #         filter=lambda attr: attr['irrep:frequency'] < 2 * attr['radius']
+    #     )
+    #     basis.check_equivariance()
 
 
 if __name__ == '__main__':

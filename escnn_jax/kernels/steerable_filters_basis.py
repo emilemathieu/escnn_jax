@@ -251,10 +251,10 @@ class SteerableFiltersBasis(KernelBasis):
         raise NotImplementedError()
 
     def check_equivariance(self):
+        np.random.seed(0)
         # Verify the steerability property of the basis
 
         S = 20
-        # points = torch.randn(S, self.dimensionality)
         key = jax.random.PRNGKey(0)
         points = jax.random.normal(key, (S, self.dimensionality))
 

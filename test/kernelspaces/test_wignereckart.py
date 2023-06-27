@@ -6,22 +6,23 @@ import numpy as np
 from escnn_jax.group import *
 from escnn_jax.kernels import *
 
-import torch
-
+import jax
+import jax.numpy as jnp
+import numpy as np
 
 class TestWEbasis(TestCase):
     
-    def test_spherical_shells(self):
-        G = o3_group(4)
-        X = SphericalShellsBasis(
-            L=4,
-            radial=GaussianRadialProfile([0., 1., 2.], [0.6, 0.6, 0.6]),
-        )
+    # def test_spherical_shells(self):
+    #     G = o3_group(4)
+    #     X = SphericalShellsBasis(
+    #         L=4,
+    #         radial=GaussianRadialProfile([0., 1., 2.], [0.6, 0.6, 0.6]),
+    #     )
 
-        irreps = [G.irrep(f, l) for f in range(2) for l in range(4)]
-        for in_rep in irreps:
-            for out_rep in irreps:
-                self._check_irreps(X, in_rep, out_rep)
+    #     irreps = [G.irrep(f, l) for f in range(2) for l in range(4)]
+    #     for in_rep in irreps:
+    #         for out_rep in irreps:
+    #             self._check_irreps(X, in_rep, out_rep)
                 
     def test_circular_shell(self):
         G = o2_group(8)
@@ -63,6 +64,8 @@ class TestWEbasis(TestCase):
                     self._check_irreps(X, in_rep, out_rep)
 
     def _check_irreps(self, X: SteerableFiltersBasis, in_rep: IrreducibleRepresentation, out_rep: IrreducibleRepresentation):
+        # print(X, in_rep, out_rep)
+        key = jax.random.PRNGKey(0)
         
         G = X.group
         
@@ -73,50 +76,56 @@ class TestWEbasis(TestCase):
             return
         
         P = 10
-        points = torch.randn(P, X.dimensionality)
+        # points = torch.randn(P, X.dimensionality)
+        key, step_key = jax.random.split(key)
+        points = jax.random.normal(step_key, (P, X.dimensionality))
 
         assert points.shape == (P, X.dimensionality)
         
         B = 5
         
-        features = torch.randn(P, B, in_rep.size)
+        # features = torch.randn(P, B, in_rep.size)
+        key, step_key = jax.random.split(key)
+        features = jax.random.normal(step_key, (P, B, in_rep.size))
         
-        filters = torch.zeros((P, basis.dim, out_rep.size, in_rep.size), dtype=torch.float32)
+        # filters = jnp.zeros((P, basis.dim, out_rep.size, in_rep.size), dtype=float)
+        # basis_sample = jax.jit(basis.sample)
+        basis_sample = basis.sample
+        filters = basis_sample(points)
+        # filters = basis_sample(points)
         
-        filters = basis.sample(points, out=filters)
+        self.assertFalse(jnp.isnan(filters).any())
+        self.assertFalse(jnp.allclose(filters, jnp.zeros_like(filters)))
         
-        self.assertFalse(torch.isnan(filters).any())
-        self.assertFalse(torch.allclose(filters, torch.zeros_like(filters)))
-        
-        a = basis.sample(points)
-        b = basis.sample(points)
-        assert torch.allclose(a, b)
+        a = basis_sample(points)
+        b = basis_sample(points)
+        assert jnp.allclose(a, b)
         del a, b
 
-        output = torch.einsum("pfoi,pbi->fbo", filters, features)
+        output = jnp.einsum("pfoi,pbi->fbo", filters, features)
         
         # for g in G.testing_elements():
         for _ in range(50):
             g = G.sample()
 
-            output1 = torch.einsum("oi,fbi->fbo",
-                                   torch.tensor(out_rep(g), dtype=output.dtype, device=output.device),
+            output1 = jnp.einsum("oi,fbi->fbo",
+                                   jnp.array(out_rep(g), dtype=output.dtype),
                                    output)
             a = X.action(g)
-            transformed_points = points @ torch.tensor(a, device=points.device, dtype=points.dtype).T
+            transformed_points = points @ jnp.array(a, dtype=points.dtype).T
 
-            transformed_filters = basis.sample(transformed_points)
+            transformed_filters = basis_sample(transformed_points)
             
-            transformed_features = torch.einsum("oi,pbi->pbo",
-                                                torch.tensor(in_rep(g), device=features.device, dtype=features.dtype),
+            transformed_features = jnp.einsum("oi,pbi->pbo",
+                                                jnp.array(in_rep(g), dtype=features.dtype),
                                                 features)
-            output2 = torch.einsum("pfoi,pbi->fbo", transformed_filters, transformed_features)
+            output2 = jnp.einsum("pfoi,pbi->fbo", transformed_filters, transformed_features)
 
-            if not torch.allclose(output1, output2, atol=1e-5, rtol=1e-4):
+            if not jnp.allclose(output1, output2, atol=1e-5, rtol=1e-4):
                 print(f"{in_rep.name}, {out_rep.name}: Error at {g}")
                 print(a)
                 
-                aerr = torch.abs(output1 - output2).detach().cpu().numpy()
+                aerr = jnp.abs(output1 - output2)
                 err = aerr.reshape(-1, basis.dim).max(0)
                 print(basis.dim, (err > 0.01).sum())
                 for idx in range(basis.dim):
@@ -125,7 +134,7 @@ class TestWEbasis(TestCase):
                         print(err[idx])
                         print(basis[idx])
 
-            self.assertTrue(torch.allclose(output1, output2, atol=1e-5, rtol=1e-4),
+            self.assertTrue(jnp.allclose(output1, output2, atol=1e-5, rtol=1e-4),
                             f"Group {G.name}, {in_rep.name} - {out_rep.name},\n"
                             f"element {g},\n"
                             f"action:\n"

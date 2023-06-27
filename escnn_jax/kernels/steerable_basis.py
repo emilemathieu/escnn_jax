@@ -78,7 +78,8 @@ class IrrepBasis(KernelBasis):
             self._start_index[_j] = idx
             idx += self.dim_harmonic(_j)
 
-    def sample(self, points: Array, out: Array = None) -> Array:
+    # def sample(self, points: Array, out: Array = None) -> Array:
+    def sample(self, points: Array) -> Array:
         r"""
 
         Sample the continuous basis elements on the discrete set of points in ``points``.
@@ -99,24 +100,36 @@ class IrrepBasis(KernelBasis):
         assert len(points.shape) == 2
         S = points.shape[0]
     
-        if out is None:
-            out = jnp.empty((S, self.dim, self.shape[0], self.shape[1]), dtype=points.dtype) # device=points.device,
+        # if out is None:
+        out = jnp.empty((S, self.dim, self.shape[0], self.shape[1]), dtype=points.dtype) # device=points.device,
     
-        assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
 
         steerable_basis = self.basis.sample_as_dict(points)
 
-        B = 0
-        outs = {}
-        for b, j in enumerate(self.js):
-            outs[j] = out[:, B:B + self.dim_harmonic(j), ...]
-            B += self.dim_harmonic(j)
+        # B = 0
+        # outs = {}
+        # for b, j in enumerate(self.js):
+        #     outs[j] = out[:, B:B + self.dim_harmonic(j), ...]
+        #     B += self.dim_harmonic(j)
 
-        out = self.sample_harmonics(steerable_basis, outs)
+        # out = self.sample_harmonics(steerable_basis, outs)
+        outs = self.sample_harmonics(steerable_basis)
+
+        B = 0
+        # out = []
+        for b, j in enumerate(self.js):
+            out = out.at[:, B:B + self.dim_harmonic(j), ...].set(outs[j])
+            B += self.dim_harmonic(j)
+            # out.append(outs[j])
+        # out = jnp.concatenate(out)
+            
+        assert out.shape == (S, self.dim, self.shape[0], self.shape[1])
+
         return out
 
     @abstractmethod
-    def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    # def sample_harmonics(self, points: Dict[Tuple, Array], out: Dict[Tuple, Array] = None) -> Dict[Tuple, Array]:
+    def sample_harmonics(self, points: Dict[Tuple, Array]) -> Dict[Tuple, Array]:
         r"""
 
         Sample the continuous basis elements on the discrete set of points.

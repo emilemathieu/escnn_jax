@@ -41,6 +41,7 @@ class HarmonicPolynomialR3Generator:
         self.L = L
         self.rho = self.G.bl_sphere_representation(L)
         self.d = self.rho.size
+        self.cob = {}
 
         if self.L > 0:
             # self.register_buffer(f'cob_1', torch.tensor(self.G.standard_representation().change_of_basis_inv, dtype=float))

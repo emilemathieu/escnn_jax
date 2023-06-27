@@ -19,7 +19,7 @@ __all__ = [
 ]
 
 def normalize(x, dim=1, eps=1e-12):
-    return x / (jnp.linalg.norm(x, axis=dim) + eps)
+    return x / (jnp.linalg.norm(x, axis=dim, keepdims=True) + eps)
 
 
 class GaussianRadialProfile(KernelBasis):
@@ -154,15 +154,15 @@ def circular_harmonics(points: Array, L: int, phase: float = 0.):
 
     del freqs, angles
 
-    # Y = jnp.empty((S, 2 * L + 1), dtype=dtype) # , device=device)
-    # Y = Y.at[:, 0].set(1.)
-    # Y = Y.at[:, 1::2].set(jnp.cos(freqs_times_angles))
-    # Y = Y.at[:, 2::2].set(jnp.sin(freqs_times_angles))
-    odd_freqs = jnp.cos(freqs_times_angles)
-    even_freqs = jnp.sin(freqs_times_angles)
-    Y = jnp.concatenate([odd_freqs, even_freqs], axis=1)
-    Y = jax.vmap(lambda x: jnp.ravel(x, order='F'))(Y)
-    Y = jnp.concatenate([jnp.ones((S, 1)), Y], axis=1)
+    Y = jnp.empty((S, 2 * L + 1), dtype=dtype) # , device=device)
+    Y = Y.at[:, 0].set(1.)
+    Y = Y.at[:, 1::2].set(jnp.cos(freqs_times_angles))
+    Y = Y.at[:, 2::2].set(jnp.sin(freqs_times_angles))
+    # odd_freqs = jnp.cos(freqs_times_angles)
+    # even_freqs = jnp.sin(freqs_times_angles)
+    # Y = jnp.concatenate([even_freqs, odd_freqs], axis=1)
+    # Y = jax.vmap(lambda x: jnp.ravel(x, order='F'))(Y)
+    # Y = jnp.concatenate([jnp.ones((S, 1)), Y], axis=1)
 
     return Y
 
@@ -170,6 +170,12 @@ def circular_harmonics(points: Array, L: int, phase: float = 0.):
 class SphericalShellsBasis(SteerableFiltersBasis):
     _filter: Array
     L: int
+    _angular_dim: int
+    radial: GaussianRadialProfile
+    _num_inv_spaces: int
+    _idx_map: Array
+    _steerable_idx_map: Array
+    harmonics_generator: HarmonicPolynomialR3Generator
 
     def __init__(self,
                  L: int,
@@ -248,7 +254,7 @@ class SphericalShellsBasis(SteerableFiltersBasis):
 
                     if filter(attr):
                         multiplicity += 1
-                        _filter[i:i+dim] = 1
+                        _filter = _filter.at[i:i+dim].set(1)
                         _idx_map += list(range(i, i+dim))
                         _steerable_idx_map.append(steerable_i)
 
@@ -689,7 +695,7 @@ class CircularShellsBasis(SteerableFiltersBasis):
 
                     if filter(attr):
                         multiplicity += 1
-                        _filter[i:i + dim] = 1
+                        _filter = _filter.at[i:i + dim].set(1)
                         _idx_map += list(range(i, i + dim))
                         _steerable_idx_map.append(steerable_i)
 
@@ -758,7 +764,8 @@ class CircularShellsBasis(SteerableFiltersBasis):
         radii = jnp.linalg.norm(points, axis=1, keepdims=True)
 
         non_origin_mask = (radii > 1e-9).reshape(-1)
-        sphere = points[non_origin_mask, :] / radii[non_origin_mask, :]
+        # sphere = points[non_origin_mask, :] / radii[non_origin_mask, :]
+        sphere = points / radii
 
         # if out is None:
         #     out = jnp.empty((S, self.dim, 1, 1), dtype=points.dtype)
@@ -771,8 +778,10 @@ class CircularShellsBasis(SteerableFiltersBasis):
 
         assert not jnp.isnan(radial).any()
 
+        circular = circular_harmonics(sphere, self.L, phase=self.axis)
+
         # sample the angular basis
-        circular = jnp.empty((S, self._angular_dim), dtype=points.dtype)
+        # circular = jnp.empty((S, self._angular_dim), dtype=points.dtype)
         # print("circular", circular.shape)
         # print("circular[non_origin_mask, :]", circular[non_origin_mask, :].shape)
         # print("circular[~non_origin_mask, :1]", circular[~non_origin_mask, :1].shape)
@@ -781,7 +790,7 @@ class CircularShellsBasis(SteerableFiltersBasis):
         # # circular[:] = np.nan
 
         # where r>0, we sample all frequencies
-        circular = circular.at[non_origin_mask, :].set(circular_harmonics(sphere, self.L, phase=self.axis))
+        # circular = circular.at[non_origin_mask, :].set(circular_harmonics(sphere, self.L, phase=self.axis))
 
         # # only frequency 0 is sampled at the origin. Other frequencies are set to 0
         # circular = circular.at[~non_origin_mask, :1].set(1.)
