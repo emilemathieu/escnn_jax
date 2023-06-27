@@ -238,19 +238,21 @@ class TestPooling(TestCase):
 
     #     self.assertEqual(y.shape, m.evaluate_output_shape(x.shape))
 
-    # def test_PointwiseAvgPool2D(self):
-    #     gs = rot2dOnR2()
-    #     ft = gs.type(gs.trivial_repr)
+    def test_PointwiseAvgPool2D(self):
+        gs = rot2dOnR2()
+        ft = gs.type(gs.trivial_repr)
 
-    #     m = PointwiseAvgPool2D(ft, 3, 2, 0)
+        m = PointwiseAvgPool2D(ft, 3, 2, 0)
 
-    #     x = torch.randn(5, ft.size, *[9+i for i in range(gs.dimensionality)])
-    #     x = ft(x)
+        key = jax.random.PRNGKey(0)
+        # x = torch.randn(5, ft.size, *[9+i for i in range(gs.dimensionality)])
+        x = jax.random.normal(key, (5, ft.size, *[9+i for i in range(gs.dimensionality)]))
+        x = ft(x)
 
-    #     m.eval()
-    #     y = m(x)
+        m = m.eval()
+        y = m(x)
 
-    #     self.assertEqual(y.shape, m.evaluate_output_shape(x.shape))
+        self.assertEqual(y.shape, m.evaluate_output_shape(x.shape))
 
     def test_PointwiseAvgPoolAntialiased2D(self):
         key = jax.random.PRNGKey(0)

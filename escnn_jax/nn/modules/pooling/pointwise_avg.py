@@ -87,6 +87,17 @@ class PointwiseAvgPool2D(EquivariantModule):
             self.padding = padding
             
         self.ceil_mode = ceil_mode
+
+    def _check_is_padding_valid(self, padding):
+        for (left_padding, right_padding), kernel_size in zip(
+            padding, self.kernel_size
+        ):
+            if max(left_padding, right_padding) > kernel_size:
+                raise RuntimeError(
+                    "Paddings should be less than the size of the kernel. "
+                    f"Padding {(left_padding, right_padding)} received for kernel size "
+                    f"{kernel_size}."
+                )
             
     def __call__(self, input: GeometricTensor) -> GeometricTensor:
         r"""
@@ -102,11 +113,24 @@ class PointwiseAvgPool2D(EquivariantModule):
         assert input.type == self.in_type
         
         # run the common max-pooling
-        output = F.avg_pool2d(input.tensor,
-                              kernel_size=self.kernel_size,
-                              stride=self.stride,
-                              padding=self.padding,
-                              ceil_mode=self.ceil_mode)
+        # output = F.avg_pool2d(input.tensor,
+        #                       kernel_size=self.kernel_size,
+        #                       stride=self.stride,
+        #                       padding=self.padding,
+        #                       ceil_mode=self.ceil_mode)
+        padding = (self.padding, self.padding)
+        self._check_is_padding_valid(padding)
+        x = input.tensor
+        x = jnp.moveaxis(x, 1, -1)
+        output = jax.lax.reduce_window(
+            x,
+            0,
+            jax.lax.add,
+            (1,) + self.kernel_size + (1,),
+            (1,) + self.stride + (1,),
+            ((0, 0),) + padding + ((0, 0),),
+        ) / np.prod(self.kernel_size)
+        output = jnp.moveaxis(output, -1, 1)
                 
         # wrap the result in a GeometricTensor
         return GeometricTensor(output, self.out_type, coords=None)
