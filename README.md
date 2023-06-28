@@ -3,6 +3,9 @@ E(n)-equivariant Steerable CNNs (*escnn*)
 --------------------------------------------------------------------------------
 **[Documentation](https://quva-lab.github.io/escnn/)** | **[escnn](<https://github.com/QUVA-Lab/escnn/>) library** |
 
+# :rocket: ~20% faster than pytorch*
+
+
 *escnn_jax* is a [Jax](http://jax.readthedocs.io/) port of the [PyTorch](https://pytorch.org/) [*escnn* library](https://github.com/QUVA-Lab/escnn/) for equivariant deep learning.
 *escnn_jax* supports steerable CNNs equivariant to both 2D and 3D isometries, as well as equivariant MLPs.
 
@@ -33,23 +36,16 @@ The library is structured into four subpackages with different high-level featur
 - [ ] enhance `model.eval()` behaviour; make `EquivariantModule.eval` recursively call submodules?
 - [ ] speed up module's `__init__` e.g. `nn.Linear` and `nn.R2Conv`
 - [ ] speed up module's `__call__` if possible?
-- add common missing `escnn.nn.modules`
-    - [x] `InnerBatchNorm`
-    - [x] `QuotientFourierELU`
-    - [ ] `R3Conv`
-    - [ ] `IIDBatchNorm1d`
-    - [ ] `IIDBatchNorm3d`
-    - [ ] `PointwiseAvgPoolAntialiased3D`
-    - [x] `PointwiseAvgPool`
-    - [x] `NormNonLinearity`
-    - [x] `TensorProductModule`
 - [ ] better `__repr__` for `EquivariantModule` and `eqx.nn.Module` more generally
 - [ ] make sure that tests pass for implemented modules and kernels
 - [ ] Bug? `InnerBatchNorm.eval()` without training returns high values
+- [ ] add `export` method for layers
+- [ ] properly measuring speed up wrt pytorch version
 
 ### Nice to have
 - [ ] add support for [`haiku`](https://dm-haiku.readthedocs.io/en/latest/) / [`flax`](https://flax.readthedocs.io/en/latest/) under `escnn.nn.haiku` / `escnn.nn.flax`
 - [ ] `jaxlinop` for `Representation` class akin to [`emlp`](https://emlp.readthedocs.io), and more generally rewrite `escnn_jax.group` in `jax`?
+- [ ] add missing modules cf `/nn/__init__.py`
 
 ## Getting Started
 
@@ -95,7 +91,6 @@ Optional:
 ```
 pymanopt>=1.0.0
 optax
-distrax
 chex
 ```
 

@@ -4,7 +4,6 @@ jaxtyping
 optax
 # dm-haiku
 equinox
-distrax
 numpy
 scipy
 lie_learn
