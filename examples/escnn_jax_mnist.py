@@ -1,8 +1,6 @@
 import inspect
 import time
-# import sys
-# sys.path.append('../')
-# import torch
+
 from escnn_jax import gspaces
 from escnn_jax import group
 from escnn_jax import nn
@@ -13,7 +11,7 @@ import jax.numpy as jnp
 import optax
 import numpy as np
 import torch
-from jaxtyping import Array, Float, Int, PyTree, PRNGKeyArray  # https://github.com/google/jaxtyping
+from jaxtyping import Array, Float, Int, PyTree, PRNGKeyArray
 from typing import List, Dict
 
 from torch.utils.data import Dataset
@@ -29,7 +27,7 @@ import numpy as np
 from PIL import Image
 
 
-# download the dataset
+# # download the dataset
 # !wget -nc http://www.iro.umontreal.ca/~lisa/icml2007data/mnist_rotation_new.zip
 # # uncompress the zip file
 # !unzip -n mnist_rotation_new.zip -d mnist_rotation_new
@@ -69,10 +67,9 @@ class C8SteerableCNN(nn.EquivariantModule):
     input_type: nn.FieldType
 
     def __init__(self, key, n_classes=10):
-        keys = jax.random.split(key, 8)
-        layers = []
-
         super(C8SteerableCNN, self).__init__()
+
+        keys = jax.random.split(key, 8)
         
         # the model is equivariant under rotations by 45 degrees, modelled by C8
         r2_act = gspaces.rot2dOnR2(N=8)
@@ -87,101 +84,94 @@ class C8SteerableCNN(nn.EquivariantModule):
         # first specify the output type of the convolutional layer
         # we choose 24 feature fields, each transforming under the regular representation of C8
         out_type = nn.FieldType(r2_act, 24*[r2_act.regular_repr])
-        layers.extend([
+        # layers.extend([
+        block1 = nn.SequentialModule(
             nn.MaskModule(in_type, 29, margin=1),
             nn.R2Conv(in_type, out_type, kernel_size=7, padding=1, use_bias=False, key=keys[0]),
             nn.InnerBatchNorm(out_type),
             nn.ReLU(out_type)
-        ])
-        print("conv 1")
+        )
+        print("block 1")
         
         # convolution 2
         # the old output type is the input type to the next layer
-        # in_type = self.block1.out_type
-        in_type = out_type
+        in_type = block1.out_type
         # the output type of the second convolution layer are 48 regular feature fields of C8
         out_type = nn.FieldType(r2_act, 48*[r2_act.regular_repr])
-        layers.extend([
+        block2 = nn.SequentialModule(
             nn.R2Conv(in_type, out_type, kernel_size=5, padding=2, use_bias=False, key=keys[1]),
             nn.InnerBatchNorm(out_type),
             nn.ReLU(out_type)
-        ])
-        print("conv 2")
-        layers.append(nn.PointwiseAvgPoolAntialiased(out_type, sigma=0.66, stride=2))
-        print("PointwiseAvgPoolAntialiased")
+        )
+        print("block 2")
+        pool1 = nn.PointwiseAvgPoolAntialiased(out_type, sigma=0.66, stride=2)
+        print("pool1")
         
         # convolution 3
         # the old output type is the input type to the next layer
-        # in_type = self.block2.out_type
-        in_type = out_type
+        in_type = block2.out_type
         # the output type of the third convolution layer are 48 regular feature fields of C8
         out_type = nn.FieldType(r2_act, 48*[r2_act.regular_repr])
-        layers.extend([
+        block3 = nn.SequentialModule(
             nn.R2Conv(in_type, out_type, kernel_size=5, padding=2, use_bias=False, key=keys[2]),
             nn.InnerBatchNorm(out_type),
             nn.ReLU(out_type)
-        ])
-        print("conv 3")
+        )
+        print("block 3")
         
         # convolution 4
         # the old output type is the input type to the next layer
-        # in_type = self.block3.out_type
-        in_type = out_type
+        in_type = block3.out_type
         # the output type of the fourth convolution layer are 96 regular feature fields of C8
         out_type = nn.FieldType(r2_act, 96*[r2_act.regular_repr])
-        layers.extend([
+        block4 = nn.SequentialModule(
             nn.R2Conv(in_type, out_type, kernel_size=5, padding=2, use_bias=False, key=keys[3]),
             nn.InnerBatchNorm(out_type),
             nn.ReLU(out_type)
-        ])
-        print("conv 4")
-        layers.append(
-            nn.PointwiseAvgPoolAntialiased(out_type, sigma=0.66, stride=2)
         )
-        print("PointwiseAvgPoolAntialiased")
+        print("block 4")
+        pool2 = nn.PointwiseAvgPoolAntialiased(out_type, sigma=0.66, stride=2)
+        print("pool2")
         
         # convolution 5
         # the old output type is the input type to the next layer
-        # in_type = self.block4.out_type
-        in_type = out_type
+        in_type = block4.out_type
         # the output type of the fifth convolution layer are 96 regular feature fields of C8
         out_type = nn.FieldType(r2_act, 96*[r2_act.regular_repr])
-        layers.extend([
+        block5 = nn.SequentialModule(
             nn.R2Conv(in_type, out_type, kernel_size=5, padding=2, use_bias=False, key=keys[4]),
             nn.InnerBatchNorm(out_type),
             nn.ReLU(out_type)
-        ])
-        print("conv 5")
+        )
+        print("block 5")
         
         # convolution 6
         # the old output type is the input type to the next layer
-        # in_type = self.block5.out_type
-        in_type = out_type
+        in_type = block5.out_type
         # the output type of the sixth convolution layer are 64 regular feature fields of C8
         out_type = nn.FieldType(r2_act, 64*[r2_act.regular_repr])
-        layers.extend([
+        block6 = nn.SequentialModule(
             nn.R2Conv(in_type, out_type, kernel_size=5, padding=1, use_bias=False, key=keys[5]),
             nn.InnerBatchNorm(out_type),
             nn.ReLU(out_type)
-        ])
-        print("conv 5")
-        layers.append(nn.PointwiseAvgPoolAntialiased(out_type, sigma=0.66, stride=1, padding=0))
-        print("PointwiseAvgPoolAntialiased")
+        )
+        print("block 6")
+        pool3 = nn.PointwiseAvgPoolAntialiased(out_type, sigma=0.66, stride=1, padding=0)
+        print("pool3")
         
-        layers.append(nn.GroupPooling(out_type))
-        print("GroupPooling")
+        gpool = nn.GroupPooling(out_type)
+        print("gpool")
 
-        self.layers = layers
+        self.layers = [block1, block2, pool1, block3, block4, pool2, block5, block6, pool3, gpool]
         
         # number of output channels
-        # c = self.gpool.out_type.size
-        c = layers[-1].out_type.size
+        c = gpool.out_type.size
         
         # Fully Connected
         self.fully_net = [
             jnp.ravel,
             eqx.nn.Linear(c, 64, key=keys[6]),
-            # eqx.nn.BatchNorm(64, axis_name="batch"),
+            eqx.nn.BatchNorm(64, axis_name="batch"),
             jax.nn.elu,
             eqx.nn.Linear(64, n_classes, key=keys[7]),
             # jax.nn.log_softmax
@@ -269,7 +259,7 @@ def compute_accuracy(
     pred_y = jnp.argmax(pred_y, axis=1)
     return jnp.mean(y == pred_y)
 
-def evaluate(model: eqx.Module, state: eqx.nn.State, testloader: torch.utils.data.DataLoader):
+def evaluate(model: eqx.Module, state: eqx.nn.State, test_loader: torch.utils.data.DataLoader):
     """This function evaluates the model on the test dataset,
     computing both the average loss and the average accuracy.
     """
@@ -279,24 +269,23 @@ def evaluate(model: eqx.Module, state: eqx.nn.State, testloader: torch.utils.dat
 
     avg_loss = 0
     avg_acc = 0
-    for x, y in testloader:
+    for x, y in test_loader:
         x = jnp.array(x.numpy())
         y = jnp.array(y.numpy())
         # Note that all the JAX operations happen inside `loss` and `compute_accuracy`,
         # and both have JIT wrappers, so this is fast.
         # avg_loss += loss(lambda x, _: inference_model(x), state, x, y)[0]
         avg_acc += compute_accuracy(inference_model, x, y)
-    # return avg_loss / len(testloader), avg_acc / len(testloader)
-    return avg_acc / len(testloader)
+    # return avg_loss / len(test_loader), avg_acc / len(test_loader)
+    return avg_acc / len(test_loader)
 
 
 def train(
     model: eqx.Module,
     state: eqx.nn.State,
-    trainloader: torch.utils.data.DataLoader,
-    testloader: torch.utils.data.DataLoader,
+    train_loader: torch.utils.data.DataLoader,
+    test_loader: torch.utils.data.DataLoader,
     optim: optax.GradientTransformation,
-    # steps: int,
     epochs: int,
     print_every: int,
 ) -> eqx.Module:
@@ -325,33 +314,26 @@ def train(
         model = eqx.apply_updates(model, updates)
         return model, state, opt_state, loss_value
 
-    # Loop over our training dataset as many times as we need.
-    def infinite_trainloader():
-        while True:
-            yield from trainloader
- 
     elapsed_time = 0.
-    for epoch in range(31):
+    for epoch in range(epochs):
         start = time.time()
 
-        # for step, (x, y) in zip(range(steps), infinite_trainloader()):
-        for step, (x, y) in enumerate(trainloader):
+        for step, (x, y) in enumerate(train_loader):
             # PyTorch dataloaders give PyTorch tensors by default,
             # so convert them to NumPy arrays.
             x = jnp.array(x.numpy())
             y = jnp.array(y.numpy())
             model, state, opt_state, train_loss = make_step(model, state, opt_state, x, y)
-            # if (step % print_every) == 0 or (step == steps - 1):
+
         end = time.time()
         elapsed_time += end - start
         if (epoch % print_every) == 0 or (epoch == epochs - 1):
-            print(step)
-            test_accuracy = evaluate(model, state, testloader)
+            test_accuracy = evaluate(model, state, test_loader)
             print(
                 f"{epoch=}",
-                f"{step=}, train_loss={train_loss.item()}, "
-                f"test_accuracy={test_accuracy.item()}, "
-                f"time={elapsed_time}, "
+                f"{step=}, train_loss={train_loss.item():.2f}, "
+                f"test_accuracy={100*test_accuracy.item():.1f}%, "
+                f"time={elapsed_time:.1f}s"
             )
             elapsed_time = 0.
     return model
@@ -395,16 +377,16 @@ if __name__ == '__main__':
     elapsed_time = time.time()
     model = C8SteerableCNN(subkey)
     elapsed_time = time.time() - elapsed_time
-    print(f"{elapsed_time=}")
+    print(f"Time for initialising model: {elapsed_time:.1f}s")
 
     state = eqx.nn.State(model)
     optim = optax.adamw(learning_rate=5e-5, weight_decay=1e-5)
     # optim = optax.adamw(learning_rate=1e-3, weight_decay=1e-5)
 
-    # steps = 30 * len(train_loader)
-    # print(len(train_loader))
-    # steps = 100 * len(train_loader)
-    # print_every = 5 * len(train_loader)
     steps = 31
     print_every = 5
+    elapsed_time = time.time()
     model = train(model, state, train_loader, test_loader, optim, steps, print_every)
+    elapsed_time = time.time() - elapsed_time
+    print(f"Total time for training and evaluating model: {elapsed_time:.1f}s")
+
